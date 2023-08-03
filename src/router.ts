@@ -31,21 +31,6 @@ Date.prototype.format = function (this: Date, time: string): string {
 
 export const __provider__: Controller[] = []
 
-export const get_all_modules = (dirs: string | string[], callback: (relative_path: string) => void, filetype: string = '.ts') => {
-    OneOrMany(dirs).value_of().forEach(dir => {
-        dir = path.resolve(dir)
-        const dir_content = readdirSync(dir, { recursive: true })
-        dir_content.forEach(item => {
-            const relative_path = path.join(dir, item)
-            if (lstatSync(relative_path).isDirectory())
-                return get_all_modules([relative_path], callback, filetype)
-            if (!item.endsWith('.ts')) return null
-
-            callback(path.resolve(relative_path))
-        })
-    })
-}
-
 const DEFAULT_PINUP_CONFIG: PinupConfigType = {
     port: 3000,
     provider_dir: path.resolve(''),
@@ -76,6 +61,26 @@ export class Pinup {
         return `/${component_path.join('/')}`
     }
 
+    private get_all_modules = (dirs: string | string[], callback: (relative_path: string) => void, filetype: string = '.ts') => {
+        OneOrMany(dirs).many().forEach(dir => {
+            if ((['node_modules', ...(this.pinup_config?.ignore_dirs || [])])
+                .includes(path.basename(path.dirname(dir)))) return null
+            if ((['node_modules', ...(this.pinup_config?.ignore_dirs || [])])
+                .includes(path.basename(dir))) return null
+            dir = path.resolve(dir)
+
+            const dir_content = readdirSync(dir, { recursive: true })
+            dir_content.forEach(item => {
+                const relative_path = path.join(dir, item)
+                if (lstatSync(relative_path).isDirectory())
+                    return this.get_all_modules([relative_path], callback, filetype)
+                if (!item.endsWith('.ts')) return null
+
+                callback(path.resolve(relative_path))
+            })
+        })
+    }
+
     private require_middleware () {
         const callback = (path) => {
             const component = require(path)
@@ -85,7 +90,7 @@ export class Pinup {
                 })
         }
 
-        get_all_modules(this.pinup_config.provider_dir, callback, '.ts')
+        this.get_all_modules(this.pinup_config.provider_dir, callback, '.ts')
     }
 
     private authorization_jwt () {
@@ -123,7 +128,7 @@ export class Pinup {
             })
         })
         this.components.forEach((component: Component) => {
-            const endpoint_callback = (req: Request, res: Response, next: NextFunction, item:ComponentTypeMethod) => {
+            const endpoint_callback = (req: Request, res: Response, next: NextFunction, item: ComponentTypeMethod) => {
                 const { pin } = this.pin_method_extensions(req, res, item)
                 const options: MethodFunctionOptions = {
                     auth: this.authorization_jwt(),
@@ -148,12 +153,12 @@ export class Pinup {
             component.for_each_methods(item => {
                 this.app[item.method](
                     this.transform_path(item.path.value_of()),
-                    (req:Request, res:Response, next:NextFunction) => endpoint_callback(req, res, next, item))
+                    (req: Request, res: Response, next: NextFunction) => endpoint_callback(req, res, next, item))
             })
         })
     }
 
-    pin_method_extensions (req: Request, res: Response, item:ComponentTypeMethod) {
+    pin_method_extensions (req: Request, res: Response, item: ComponentTypeMethod) {
         const pin = {
             res: (reply: Reply) => { res.status(reply.value().status).json(reply.path(item.path.one('/')).value()) },
             module: (name: string) => this.components.find((item: Component) => item.value_of().name == name),
@@ -194,7 +199,7 @@ export class Pinup {
         return { pin }
     }
 
-    async run (logger: boolean = true): Promise < void> {
+    async run (logger: boolean = true): Promise<void> {
         const start_time = performance.now()
         await this.setup()
         this.app.listen(this.pinup_config.port, () => {

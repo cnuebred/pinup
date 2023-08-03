@@ -126,6 +126,7 @@ export type ProviderType = {
 export type PinupConfigType = {
   port?: number
   provider_dir?: string | string[]
+  ignore_dirs?: string[]
   template_dir?: string | string[]
   template_render_options?: CellRenderOptionsType
   responses?: string | string[]
