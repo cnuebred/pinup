@@ -127,6 +127,7 @@ export class Pinup {
                 const { pin } = this.pin_method_extensions(req, res, item)
                 const options: MethodFunctionOptions = {
                     auth: this.authorization_jwt(),
+                    self: item,
                     query: {},
                     body: {},
                     params: {},

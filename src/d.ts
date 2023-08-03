@@ -48,6 +48,7 @@ export type AuthType = {
 }
 export type MethodFunctionOptions = {
   next: NextFunction
+  self: ComponentTypeMethod
   pin: {
     res: (reply:Reply) => void
     module: (name: string) => Component
