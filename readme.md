@@ -21,7 +21,7 @@ Quick Start
 Here's a simple example of using the Pinup library to create two API endpoints:
 ```typescript
 import express from 'express';
-import { Pinup, pin, pins, need, Reply } from 'pinup';
+import { Pinup, Pinpack, Reply, pin, pins, need } from 'pinup'
 
 const app = express();
 const pinup = new Pinup(app);
@@ -29,17 +29,17 @@ const pinup = new Pinup(app);
 @pin('dogs')
 export class DogController {
     @pins.get()
-    getDogs() {
-        const dogs = ['Bulldog', 'Poodle', 'Labrador'];
-        return Reply().data(dogs);
+    getDogs({ op }: Pinpack) {
+        const dogs = ['Bulldog', 'Poodle', 'Labrador']
+        return op.pin.res(Reply().data(dogs))
     }
 
     @pins.get(':id')
     @need.params(['id'])
-    getDogById({ op, params }) {
-        const dogId = params.id;
-        const dog = { id: dogId, breed: 'Bulldog' };
-        return Reply().data(dog);
+    getDogById({ op }: Pinpack) {
+        const dogId = op.params.id
+        const dog = { id: dogId, breed: 'Bulldog' }
+        return op.pin.res(Reply().data(dog))
     }
 }
 
@@ -80,26 +80,26 @@ Usage Example
 -------------
 ```typescript
 import express from 'express';
-import { Pinup, pin, pins, need, Reply } from 'pinup';
+import { Pinup, Pinpack, Reply, pin, pins, need } from 'pinup'
 
 const app = express();
 const pinup = new Pinup(app);
 
 @pin('items')
 export class ItemController {
-    @pins.get()
-    getItems() {
-        const items = ['item1', 'item2', 'item3'];
-        return Reply().data(items);
-    }
+  @pins.get()
+	getItems() {
+		const items = ['item1', 'item2', 'item3']
+		return Reply().data(items)
+	}
 
-    @pins.get(':id')
-    @need.params(['id'])
-    getItemById({ op, params }) {
-        const itemId = params.id;
-        const item = { id: itemId, name: 'Sample Item' };
-        return Reply().data(item);
-    }
+  @pins.get(':id')
+  @need.params(['id'])
+  getItemById({ op }: Pinpack) {
+  	const itemId = op.params.id
+  	const item = { id: itemId, name: 'Sample Item' }
+  	return op.pin.res(Reply().data(item))
+  }
 }
 
 pinup.run();
