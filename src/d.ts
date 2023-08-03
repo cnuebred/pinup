@@ -1,19 +1,22 @@
+/* eslint-disable no-unused-vars */
 /* eslint-disable no-use-before-define */
 import { Build } from '@cnuebred/hivecraft/dist/core'
 import { NextFunction, Request, Response } from 'express'
 import { JwtPayload, SignOptions } from 'jsonwebtoken'
 import { Pinpack } from './controller'
 import { CellRenderOptionsType } from '@cnuebred/hivecraft/dist/d'
+import { Reply } from './response'
+import { Component } from './utils'
 
 declare global {
-    export interface Date{
-        format: (this: Date, format: string) => string
-    }
+  export interface Date {
+    format: (this: Date, format: string) => string
+  }
 }
 
 type book<T> = { [index: string]: T }
 export type AuthType = {
-  jwt_secret?: string
+  secret?: string
   expires_in?: string | number | undefined
   passed?: boolean,
   payload?: string | JwtPayload | null
@@ -22,34 +25,41 @@ export type AuthType = {
 }
 export type MethodFunctionOptions = {
   next: NextFunction
-  pinres: (msg: string, error?: boolean, options?: PinresOptions) => void
-  pinmodule: (name: string) => ModuleType
-  pinlog: (req: Request) => void
-  pintemplate: (name: string) => { name: string, template: Build }
-  pinrender: (name: string, replace: {[index:string]: string | number }) => any
-  redirect: (
-    name: string,
-    query?: { [index: string]: string },
-    params?: { [index: string]: string }
-  ) => void
+  pin: {
+    res: (reply:Reply) => void
+    module: (name: string) => Component
+    log: () => void
+    redirect: (
+      name: string,
+      query?: { [index: string]: string },
+      params?: { [index: string]: string }
+    ) => void
+  }
   auth: AuthType
   params: book<string>
   headers: book<string>
   query: book<string>
   body: book<any>
 }
+export type Controller = { new(...args: any[]) } & PinupType
 
 export type PinupType = {
-  path?: string
+  name: string
+  path: string
   full_path: string[]
-  parent?: { new(...args: any[]) } & PinupType
+  data: {
+    [K in RequestData]?: string[]
+  }
+  parent?: Controller
   // eslint-disable-next-line no-use-before-define
   methods: MethodType[]
 }
 
-export type Controller = { new(...args: any[]) } & PinupType
 export type MethodType = {
   method: string,
+  data?: {
+    [K in RequestData]?: string[]
+  }
   name: string,
   parent: Controller
   path: string[],
@@ -57,50 +67,52 @@ export type MethodType = {
 }
 
 export type RequestMethod = 'get' | 'post' | 'patch' | 'delete' | 'put' | 'option'
+export type RequestData = 'params' | 'query' | 'body' | 'headers'
 
 // Response
 export type Pinres = {
-    error: boolean,
-    msg: string,
-    path?: string,
-    timestamp?: number
-    data?: { [index: string]: any }
-    status?: number
+  error: boolean,
+  msg: string,
+  path: string,
+  timestamp: number
+  data: { [index: string]: any }
+  status: number,
+  type: string
 }
 export type PinresOptions = {
-    data?: { [index: string]: any },
-    path?: string,
-    timestamp?: number
-    status?: number
+  data?: { [index: string]: any },
+  path?: string,
+  timestamp?: number
+  status?: number
 }
 // Router
 export type ModuleType = {
-    receive_method: string,
-    name: string,
-    parent: Controller
-    foo: (arg: Pinpack) => any
-    path: string[]
-  }
+  method: string,
+  name: string,
+  parent: Controller
+  foo: (arg: Pinpack) => any
+  path: string[]
+}
 
 export type ProviderType = {
-    __modules__: Controller[]
-    modules: ModuleType[]
-  }
+  __modules__: Controller[]
+  modules: ModuleType[]
+}
 
 export type PinupConfigType = {
-    port?: number
-    provider_dir?: string | string[]
-    template_dir?: string | string[]
-    template_render_options?: CellRenderOptionsType
-    responses?: string | string[]
-    request_logger?: boolean
-    auth?: {
-      secret?: string,
-      expires_in?: string
-    }
-    logger?: (port) => string
+  port?: number
+  provider_dir?: string | string[]
+  template_dir?: string | string[]
+  template_render_options?: CellRenderOptionsType
+  responses?: string | string[]
+  request_logger?: boolean
+  auth?: {
+    secret?: string,
+    expires_in?: string
+  }
+  logger?: (port) => string
 }
 
 export type PinupOptionsType = {
-    auth?: AuthType
-  }
+  auth?: AuthType
+}

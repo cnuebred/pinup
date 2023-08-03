@@ -1,228 +1,240 @@
-import { Build, Core } from '@cnuebred/hivecraft/dist/core'
+import { Build } from '@cnuebred/hivecraft/dist/core'
 import cors from 'cors'
 import express, { NextFunction, Request, Response } from 'express'
 import { lstatSync, readdirSync } from 'fs'
-import { SignOptions, sign } from 'jsonwebtoken'
 import path from 'path'
+import { Reply } from './response'
+import { MethodType, PinupConfigType, Controller, RequestMethod, RequestData, MethodFunctionOptions, AuthType } from './d'
+import { Component, OneOrMany } from './utils'
 import { Pinpack } from './controller'
-import { MethodFunctionOptions, MethodType, PinupOptionsType, PinupConfigType, ProviderType, ModuleType } from './d'
-import { _pinres } from './response'
+import { SignOptions, sign } from 'jsonwebtoken'
 
 // eslint-disable-next-line no-extend-native
 Date.prototype.format = function (this: Date, time: string): string {
-  const add_zero = (text:string, size:number = 2) => ('0'.repeat(size) + text).slice(-size)
-  time = time.replaceAll(/\$ms/gm, add_zero(this.getMilliseconds().toString()))
-    .replaceAll(/\$s/gm, add_zero(this.getSeconds().toString()))
-    .replaceAll(/\$m/gm, add_zero(this.getMinutes().toString()))
-    .replaceAll(/\$h/gm, add_zero(this.getHours().toString()))
-    .replaceAll(/\$D/gm, add_zero(this.getDate().toString()))
-    .replaceAll(/\$M/gm, add_zero((this.getMonth() + 1).toString()))
-    .replaceAll(/\$Y/gm, add_zero(this.getFullYear().toString(), 4))
+    const add_zero = (text: string, size: number = 2) => ('0'.repeat(size) + text).slice(-size)
+    time = time.replaceAll(/\$ms/gm, add_zero(this.getMilliseconds().toString()))
+        .replaceAll(/\$s/gm, add_zero(this.getSeconds().toString()))
+        .replaceAll(/\$m/gm, add_zero(this.getMinutes().toString()))
+        .replaceAll(/\$h/gm, add_zero(this.getHours().toString()))
+        .replaceAll(/\$D/gm, add_zero(this.getDate().toString()))
+        .replaceAll(/\$M/gm, add_zero((this.getMonth() + 1).toString()))
+        .replaceAll(/\$Y/gm, add_zero(this.getFullYear().toString(), 4))
 
-  return time
+    return time
+}
+// const Just = <T>(pack: T) => ({
+//     map: (fn: <T>(pack: T) => typeof Just<T>) => Just(fn(pack)),
+//     value_of: () => !Array.isArray(pack) ? [pack] : pack,
+//     exist: () => pack ? Just(pack) : Just([]),
+//     inspect: () => `Just(${pack})`,
+//     type: 'just'
+// })
+
+export const __provider__: Controller[] = []
+
+export type ComponentTypeMethod = {
+    name: string,
+    endpoint: OneOrMany<string>,
+    path: OneOrMany<string>,
+    method: RequestMethod
+    parent: Controller
+    foo: ({ rec, rep, op }: Pinpack) => any,
+    data: {
+        // eslint-disable-next-line no-unused-vars
+        [index in RequestData]?: string[]
+    }
 }
 
-export const __provider__: ProviderType = {
-  __modules__: [],
-  modules: []
+export type ComponentType = {
+    name: string,
+    path: OneOrMany<string>,
+    full_path: OneOrMany<string>,
+    methods: ComponentTypeMethod[]
 }
 
-const Just = <T>(pack: T) => ({
-  map: (fn: <T>(pack: T) => typeof Just<T>) => Just(fn(pack)),
-  value_of: () => !Array.isArray(pack) ? [pack] : pack,
-  exist: () => pack ? Just(pack) : Just([]),
-  inspect: () => `Just(${pack})`,
-  type: 'just'
-})
+export const get_all_modules = (dirs: string | string[], callback: (relative_path: string) => void, filetype: string = '.ts') => {
+    OneOrMany(dirs).value_of().forEach(dir => {
+        dir = path.resolve(dir)
+        const dir_content = readdirSync(dir, { recursive: true })
+        dir_content.forEach(item => {
+            const relative_path = path.join(dir, item)
+            if (lstatSync(relative_path).isDirectory())
+                return get_all_modules([relative_path], callback, filetype)
+            if (!item.endsWith('.ts')) return null
+
+            callback(path.resolve(relative_path))
+        })
+    })
+}
+
+const DEFAULT_PINUP_CONFIG: PinupConfigType = {
+    port: 3000,
+    provider_dir: path.resolve(''),
+    request_logger: true
+}
 
 export class Pinup {
-  #provider: ProviderType = __provider__
-  pinup_config: PinupConfigType = {}
-  setup_options: PinupOptionsType = {}
-  template_views: {name:string, template: Build | null}[] = []
-  app: express.Express
+    #provider: Controller[] = __provider__ // private
+    components: Component[] = [] // private
+    templates: Build[] = []
+    pinup_config: PinupConfigType = {}
+    app: express.Express
 
-  constructor (app: express.Express, options: PinupConfigType = {}) {
-    this.app = app
-    this.pinup_config = options
-    this.pre_setup()
-    this.require_middleware()
-  }
-
-  private pre_setup () {
-    this.app.use(express.json())
-    this.app.use(cors())
-  }
-
-  private transform_path (component_path: string[]) {
-    component_path = component_path.filter(item => !!item)
-    return `/${component_path.join('/')}`
-  }
-
-  private require_middleware () {
-    Just<string | string[]>(this.pinup_config.provider_dir)
-      .exist()
-      .value_of()
-      .forEach(dir => {
-        const get_components = (dir:string) => {
-          readdirSync(dir, { recursive: true }).forEach((component_file) => {
-            if (lstatSync(path.join(dir, component_file)).isDirectory()) { return get_components(path.join(dir, component_file)) }
-            const component = require(path.resolve(path.join(dir, component_file)))
-            if (component_file.endsWith('.view.ts')) {
-              for (const [key, value] of Object.entries<Core['build']>(component)) {
-                const template = {
-                  name: key,
-                  template: value(this.pinup_config.template_render_options) as null as Build
-                }
-                this.template_views.push(template)
-              }
-            }
-          })
-        }
-        get_components(dir)
-      })
-  }
-
-  private authorization_jwt (secret: string, expires_in: string | number | undefined = '1h') {
-    const auth = {
-      jwt_secret: secret,
-      expires_in,
-      passed: undefined,
-      payload: null,
-      sign: (payload: string | object | Buffer, secretOrPrivateKey?: null, options?: SignOptions & { algorithm: 'none' }) => {
-        return sign(payload, secretOrPrivateKey || this.setup_options.auth.jwt_secret, { ...options, ...{ expiresIn: this.setup_options.auth.expires_in || '1h' } })
-      }
+    constructor (app: express.Express, pinup_config: PinupConfigType = {}) {
+        this.app = app
+        this.pinup_config = { ...DEFAULT_PINUP_CONFIG, ...pinup_config }
+        this.pre_setup()
+        this.require_middleware()
     }
-    Object.defineProperty(this.setup_options, 'auth', {
-      get: () => {
+
+    private pre_setup () {
+        this.app.use(express.json())
+        this.app.use(cors())
+    }
+
+    private transform_path (component_path: string[]) {
+        component_path = component_path.filter(item => !!item)
+        return `/${component_path.join('/')}`
+    }
+
+    private require_middleware () {
+        const callback = (path) => {
+            const component = require(path)
+            if (path.endsWith('.view.ts'))
+                Object.values(component).forEach((item: Build) => {
+                    this.templates.push(item)
+                })
+        }
+
+        get_all_modules(this.pinup_config.provider_dir, callback, '.ts')
+    }
+
+    private authorization_jwt () {
+        const auth: AuthType = {
+            secret: this.pinup_config?.auth?.secret || 'secret',
+            expires_in: this.pinup_config?.auth?.expires_in || '1h',
+            passed: undefined,
+            payload: null,
+            sign: (payload: string | object | Buffer, secretOrPrivateKey?: null, options?: SignOptions & { algorithm: 'none' }) => {
+                return sign(payload, secretOrPrivateKey || auth.secret, { ...{ expiresIn: auth.expires_in || '1h' }, ...options })
+            }
+        }
         return auth
-      }
-    })
-  }
+    }
 
-  async setup () {
-    for (const template of this.template_views) {
-      template.template = await template.template
-    }
-    if (this.pinup_config?.auth?.secret) {
-      this.authorization_jwt(this.pinup_config.auth.secret, this.pinup_config.auth.expires_in)
-    }
-    this.#provider.__modules__.forEach((module) => {
-      module.methods.forEach((method: MethodType) => {
-        this.#provider.modules.push({
-          receive_method: method.method,
-          name: method.name,
-          parent: module,
-          foo: method.foo.bind(module),
-          path: [...module.full_path, ...method.path]
+    setup () {
+        this.#provider.forEach((module) => {
+            const component = Component({
+                name: module.name,
+                path: OneOrMany(module.path),
+                full_path: OneOrMany(module.full_path),
+                methods: []
+            })
+            this.components.push(component)
+            module.methods.forEach((method: MethodType) => {
+                component.set_method({
+                    name: method.name,
+                    method: method.method as RequestMethod,
+                    endpoint: OneOrMany(method.path),
+                    path: OneOrMany([...module.full_path, ...method.path].filter(item => !!item)),
+                    parent: module,
+                    foo: method.foo.bind(module),
+                    data: method.data
+                })
+            })
         })
-      })
-    })
-    this.#provider.modules.forEach(module => {
-      const endpoint_callback = (req:Request, res:Response, next:NextFunction) => {
-        const { pinres, pinmodule, pintemplate, redirect, pinlog, pinrender } = this.options_method_extensions(req, res, module)
-        const options: MethodFunctionOptions = {
-          auth: this.setup_options.auth,
-          query: {},
-          body: {},
-          params: {},
-          headers: {},
-          next,
-          pinres,
-          pinmodule,
-          pinrender,
-          redirect,
-          pintemplate,
-          pinlog
-        }
-        Object.defineProperty(options, 'auth', {
-          get: () => {
-            if (!this.setup_options.auth) {
-              throw Error('You cannot use auth properties due they\'re disable. Type auth secret in Pinup options')
+        this.components.forEach((component: Component) => {
+            const endpoint_callback = (req: Request, res: Response, next: NextFunction, item:ComponentTypeMethod) => {
+                const { pin } = this.pin_method_extensions(req, res, item)
+                const options: MethodFunctionOptions = {
+                    auth: this.authorization_jwt(),
+                    query: {},
+                    body: {},
+                    params: {},
+                    headers: {},
+                    next,
+                    pin
+                }
+                Object.defineProperty(options, 'auth', {
+                    get: () => {
+                        if (!this.pinup_config?.auth?.secret) {
+                            throw Error('You cannot use auth properties due they\'re disable. Type auth secret in Pinup options')
+                        }
+                        return this.pinup_config.auth
+                    }
+                })
+                return item.foo({ rec: req, rep: res, op: options } as Pinpack)
             }
-            return this.setup_options.auth
-          }
+            component.for_each_methods(item => {
+                this.app[item.method](
+                    this.transform_path(item.path.value_of()),
+                    (req:Request, res:Response, next:NextFunction) => endpoint_callback(req, res, next, item))
+            })
         })
-        return module.foo({ rec: req, rep: res, op: options } as Pinpack)
-      }
-      this.app[module.receive_method](this.transform_path(module.path), endpoint_callback)
-    })
-  }
-
-  options_method_extensions (req:Request, res:Response, module: ModuleType) {
-    const path = this.transform_path(module.path)
-
-    const pinres = (msg:string, error:boolean = false, options) => { res.status(options?.status || 200).json(_pinres(msg, error, { ...options, ...{ path } })) }
-    const pinmodule = (name:string) => this.#provider.modules.find(item => item.name == name)
-    const pintemplate = (name:string) => this.template_views.find(item => item.name == name)
-    const pinrender = (name:string, replace: {[index:string]: string|number}) => {
-      replace = Object.fromEntries(Object.entries(replace).map(item => {
-        return [item[0], item[1].toString()]
-      }))
-      res.send(
-        this.template_views.find(item => item.name == name).template.html(replace as {[index:string]: string})
-      )
     }
-    const redirect = (
-      name:string,
-      query: {[index:string]: string} = {},
-      params: {[index:string]: string} = {}
-    ) => {
-      const create_query = () => Object.entries(query).map(([key, value]) => `${key}=${value}`).join('&')
-      const create_params = (path:string) => {
-        Object.entries(params).forEach(([key, value]) => {
-          path = path.replace(`:${key}`, value)
+
+    pin_method_extensions (req: Request, res: Response, item:ComponentTypeMethod) {
+        const pin = {
+            res: (reply: Reply) => { res.status(reply.value().status).json(reply.path(item.path.one('/')).value()) },
+            module: (name: string) => this.components.find((item: Component) => item.value_of().name == name),
+            redirect: (
+                name: string,
+                query: { [index: string]: string } = {},
+                params: { [index: string]: string } = {}
+            ) => {
+                const create_query = () => Object.entries(query).map(([key, value]) => `${key}=${value}`).join('&')
+                const create_params = (path: string) => {
+                    Object.entries(params).forEach(([key, value]) => {
+                        path = path.replace(`:${key}`, value)
+                    })
+                    return path
+                }
+                if (!pin.module(name)) { throw new Error('This module doesn\'t exist') }
+
+                res.redirect(create_params(this.transform_path((pin.module(name).value_of().path.value_of()))) + '?' + create_query())
+            },
+            log: () => {
+                if (!this.pinup_config.request_logger) return ''
+                const date = new Date()
+                const parts = [
+                    date.format('[$h:$m:$s|$D.$M.$Y] '),
+                    item.method,
+                    item.name,
+                    req.route.path,
+                    req.headers['user-agent'],
+                    `Auth: ${!!req.headers.authorization}`,
+                    ''
+                ]
+                const log = parts.join('\t|')
+                console.log(log)
+                return log
+            }
+        }
+
+        return { pin }
+    }
+
+    async run (logger: boolean = true): Promise < void> {
+        const start_time = performance.now()
+        await this.setup()
+        this.app.listen(this.pinup_config.port, () => {
+            console.log(`Server build in ${Math.ceil((performance.now() - start_time)) / 1000}s`)
+            console.log(`Server is running on ${this.pinup_config.port}`)
+            console.log(`Authentication JWT ${this.pinup_config?.auth?.secret ? 'enabled with' : 'disable'}  ${'*'.repeat(this.pinup_config?.auth?.secret?.length || 0)}`)
+            if (logger) {
+                this.pinup_config.request_logger = logger
+                const methods = []
+                this.components.forEach(item => {
+                    item.for_each_methods(method => {
+                        methods.push({
+                            method: method.method,
+                            name: method.name,
+                            path: method.path.one('/')
+                        })
+                    })
+                })
+                console.table(methods)
+            }
         })
-        return path
-      }
-      if (!pinmodule(name)) { throw new Error('This module doesn\'t exist') }
-
-      res.redirect(create_params(this.transform_path((pinmodule(name).path))) + '?' + create_query())
     }
-    const pinlog = () => {
-      if (!this.pinup_config.request_logger) return ''
-      const date = new Date()
-      const parts = [
-        date.format('[$h:$m:$s|$D.$M.$Y] '),
-        module.receive_method,
-        module.name,
-        req.route.path,
-        req.headers['user-agent'],
-        `Auth: ${!!req.headers.authorization}`,
-        ''
-      ]
-      const log = parts.join(' | ')
-      console.log(log)
-      return log
-    }
-    return {
-      pinres, pinmodule, pintemplate, redirect, pinlog, pinrender
-    }
-  }
-
-  async run (logger: boolean = true): Promise<void> {
-    const start_time = performance.now()
-    await this.setup()
-    this.app.listen(this.pinup_config.port, () => {
-      console.log(`Server build in ${Math.ceil((performance.now() - start_time)) / 1000}s`)
-      console.log(`Server is running on ${this.pinup_config.port}`)
-      console.log(`Authentication JWT ${this.setup_options?.auth?.jwt_secret ? 'enabled with' : 'disable'}  ${'*'.repeat(this.setup_options?.auth?.jwt_secret.length || 0)}`)
-      if (logger) {
-        this.pinup_config.request_logger = logger
-        console.table(this.#provider.modules.map(item => {
-          return {
-            method: item.receive_method,
-            name: item.name,
-            path: item.path.filter(item => !!item).join('/')
-          }
-        }))
-        console.table(this.template_views.map(item => {
-          return {
-            name: item.name,
-            'template size': `${item.template.size / 1000}kB`
-          }
-        }))
-      }
-    })
-  }
 }
