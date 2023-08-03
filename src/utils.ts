@@ -1,4 +1,4 @@
-import { ComponentType, ComponentTypeMethod } from './router';
+import { ComponentType, ComponentTypeMethod } from './d';
 
 export const PINS_METHODS = ['get', 'post', 'delete', 'patch', 'put', 'option']
 

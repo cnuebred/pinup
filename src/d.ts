@@ -1,17 +1,40 @@
 /* eslint-disable no-unused-vars */
 /* eslint-disable no-use-before-define */
-import { Build } from '@cnuebred/hivecraft/dist/core'
 import { NextFunction, Request, Response } from 'express'
 import { JwtPayload, SignOptions } from 'jsonwebtoken'
-import { Pinpack } from './controller'
 import { CellRenderOptionsType } from '@cnuebred/hivecraft/dist/d'
 import { Reply } from './response'
-import { Component } from './utils'
+import { Component, OneOrMany } from './utils'
 
 declare global {
   export interface Date {
     format: (this: Date, format: string) => string
   }
+}
+export type Pinpack = {
+  rec: Request
+  rep: Response,
+  op: MethodFunctionOptions
+}
+
+export type ComponentTypeMethod = {
+  name: string,
+  endpoint: OneOrMany<string>,
+  path: OneOrMany<string>,
+  method: RequestMethod
+  parent: Controller
+  foo: ({ rec, rep, op }: Pinpack) => any,
+  data: {
+      // eslint-disable-next-line no-unused-vars
+      [index in RequestData]?: string[]
+  }
+}
+
+export type ComponentType = {
+  name: string,
+  path: OneOrMany<string>,
+  full_path: OneOrMany<string>,
+  methods: ComponentTypeMethod[]
 }
 
 type book<T> = { [index: string]: T }

@@ -4,9 +4,8 @@ import express, { NextFunction, Request, Response } from 'express'
 import { lstatSync, readdirSync } from 'fs'
 import path from 'path'
 import { Reply } from './response'
-import { MethodType, PinupConfigType, Controller, RequestMethod, RequestData, MethodFunctionOptions, AuthType } from './d'
+import { MethodType, PinupConfigType, Controller, RequestMethod, MethodFunctionOptions, AuthType, ComponentTypeMethod, Pinpack } from './d'
 import { Component, OneOrMany } from './utils'
-import { Pinpack } from './controller'
 import { SignOptions, sign } from 'jsonwebtoken'
 
 // eslint-disable-next-line no-extend-native
@@ -31,26 +30,6 @@ Date.prototype.format = function (this: Date, time: string): string {
 // })
 
 export const __provider__: Controller[] = []
-
-export type ComponentTypeMethod = {
-    name: string,
-    endpoint: OneOrMany<string>,
-    path: OneOrMany<string>,
-    method: RequestMethod
-    parent: Controller
-    foo: ({ rec, rep, op }: Pinpack) => any,
-    data: {
-        // eslint-disable-next-line no-unused-vars
-        [index in RequestData]?: string[]
-    }
-}
-
-export type ComponentType = {
-    name: string,
-    path: OneOrMany<string>,
-    full_path: OneOrMany<string>,
-    methods: ComponentTypeMethod[]
-}
 
 export const get_all_modules = (dirs: string | string[], callback: (relative_path: string) => void, filetype: string = '.ts') => {
     OneOrMany(dirs).value_of().forEach(dir => {

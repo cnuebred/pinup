@@ -1,15 +1,8 @@
 import { verify } from 'jsonwebtoken'
 import { __provider__ } from './router'
-import { Controller, MethodFunctionOptions, RequestMethod } from './d'
-import { Request, Response } from 'express'
+import { Controller, Pinpack, RequestMethod } from './d'
 import { OneOrMany, PINS_METHODS } from './utils'
 import { Reply } from './response'
-
-export type Pinpack = {
-    rec: Request
-    rep: Response,
-    op: MethodFunctionOptions
-}
 
 export function pin (
     path: string,
