@@ -99,7 +99,7 @@ export type Pinres = {
   msg: string,
   path: string,
   timestamp: number
-  data: { [index: string]: any }
+  data: { [index: string]: any } | any[]
   status: number,
   type: string
 }
