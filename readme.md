@@ -88,9 +88,9 @@ const pinup = new Pinup(app);
 @pin('items')
 export class ItemController {
   @pins.get()
-	getItems() {
+	getItems({ op }: Pinpack) {
 		const items = ['item1', 'item2', 'item3']
-		return Reply().data(items)
+		return op.pin.res(Reply().data(items))
 	}
 
   @pins.get(':id')
