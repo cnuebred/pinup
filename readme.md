@@ -15,6 +15,15 @@ To get started with the Pinup library, you can install it using the npm package 
 
     npm install pinup
 
+
+Use also [**pinup-cli**](https://github.com/cnuebred/pinup-cli) to generate whole projects\
+**Instalation**:
+
+    npm install -g pinup-cli
+**Creating**:
+
+    pinup create <name> [options]
+
 Quick Start
 -----------
 
