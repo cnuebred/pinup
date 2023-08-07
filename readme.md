@@ -30,7 +30,7 @@ Quick Start
 Here's a simple example of using the Pinup library to create two API endpoints:
 ```typescript
 import express from 'express';
-import { Pinup, Pinpack, Reply, pin, pins, need } from 'pinup'
+import { Pinup, Pinpack, reply, pin, pins, need } from 'pinup'
 
 const app = express();
 const pinup = new Pinup(app);
@@ -40,7 +40,7 @@ export class DogController {
     @pins.get()
     getDogs({ op }: Pinpack) {
         const dogs = ['Bulldog', 'Poodle', 'Labrador']
-        return op.pin.res(Reply().data(dogs))
+        return op.pin.res(reply().data(dogs))
     }
 
     @pins.get(':id')
@@ -48,7 +48,7 @@ export class DogController {
     getDogById({ op }: Pinpack) {
         const dogId = op.params.id
         const dog = { id: dogId, breed: 'Bulldog' }
-        return op.pin.res(Reply().data(dog))
+        return op.pin.res(reply().data(dog))
     }
 }
 
@@ -72,11 +72,11 @@ The `Pinup` class is used for configuring and running the Express application.
 *   `setup()`: Configures endpoints and controller paths.
 *   `run(logger?: boolean)`: Launches the Express server.
 
-### Class `Reply`
+### Function `reply`
 
-The `Reply` class is responsible for creating and sending responses from endpoints.
+The `reply` Monad is responsible for creating and sending responses from endpoints.
 
-*   `Reply(content: string | Pinres)`: Creates a response instance.
+*   `reply(content: string | Pinres)`: Creates a response instance.
 *   Chainable Methods:
     *   `status(status: number)`: Sets the response status.
     *   `error(error: boolean)`: Sets the error flag.
@@ -89,7 +89,7 @@ Usage Example
 -------------
 ```typescript
 import express from 'express';
-import { Pinup, Pinpack, Reply, pin, pins, need } from 'pinup'
+import { Pinup, Pinpack, reply, pin, pins, need } from 'pinup'
 
 const app = express();
 const pinup = new Pinup(app);
@@ -99,7 +99,7 @@ export class ItemController {
   @pins.get()
 	getItems({ op }: Pinpack) {
 		const items = ['item1', 'item2', 'item3']
-		return op.pin.res(Reply().data(items))
+		return op.pin.res(reply().data(items))
 	}
 
   @pins.get(':id')
@@ -107,7 +107,7 @@ export class ItemController {
   getItemById({ op }: Pinpack) {
   	const itemId = op.params.id
   	const item = { id: itemId, name: 'Sample Item' }
-  	return op.pin.res(Reply().data(item))
+  	return op.pin.res(reply().data(item))
   }
 }
 
