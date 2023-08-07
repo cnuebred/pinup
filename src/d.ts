@@ -85,7 +85,7 @@ export type MethodType = {
   name: string,
   parent: Controller
   path: string[],
-  foo: (req: Request, res: Response, options: MethodFunctionOptions) => void
+  foo: ({ rec, rep, op }: Pinpack) => void
 }
 
 export type RequestMethod = 'get' | 'post' | 'patch' | 'delete' | 'put' | 'option'
