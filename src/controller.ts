@@ -1,8 +1,8 @@
 import { verify } from 'jsonwebtoken'
 import { __provider__ } from './router'
 import { Controller, Pinpack, RequestMethod } from './d'
-import { OneOrMany, PINS_METHODS } from './utils'
-import { Reply } from './response'
+import { one_or_many, PINS_METHODS } from './utils'
+import { reply } from './response'
 
 export function pin (
     path: string,
@@ -24,7 +24,7 @@ export function pin (
 }
 
 const pins_wrapper = (method: RequestMethod, path: string | string[]) => {
-    return request_method_wrapper(method, OneOrMany(path).many(''))
+    return request_method_wrapper(method, one_or_many(path).many(''))
 }
 
 const request_method_wrapper = (request_method: RequestMethod, paths: string[]): any => {
@@ -42,7 +42,7 @@ const request_method_wrapper = (request_method: RequestMethod, paths: string[]):
             target.methods.push({
                 method: request_method,
                 name,
-                path: OneOrMany(path).many(''),
+                path: one_or_many(path).many(''),
                 parent: target,
                 foo: descriptor.value,
                 data: { ...target.data } || {}
@@ -75,7 +75,7 @@ const data_method_wrapper = (name_dataset: 'params' | 'query' | 'body' | 'header
 
             if (require.length !== 0) {
                 return op.pin.res(
-                    Reply(`This endpoint require '${name_dataset}' with specific properties: ${require.join(', ')}`)
+                    reply(`This endpoint require '${name_dataset}' with specific properties: ${require.join(', ')}`)
                         .error(true)
                 )
             }
@@ -104,7 +104,7 @@ export const auth = (error: boolean = true, jwt_secret?: string): any => {
         descriptor.value = function ({ rec, rep, op }: Pinpack) {
             if (!rec.headers.authorization)
                 return op.pin.res(
-                    Reply('This endpoint require \'header\' with specific properties: authorization')
+                    reply('This endpoint require \'header\' with specific properties: authorization')
                         .error(true)
                 )
             // eslint-disable-next-line no-unused-vars
@@ -115,7 +115,7 @@ export const auth = (error: boolean = true, jwt_secret?: string): any => {
                 op.auth.passed = true
             } catch (err) {
                 if (error) {
-                    return op.pin.res(Reply(`${err.message} [${err.name}]`)
+                    return op.pin.res(reply(`${err.message} [${err.name}]`)
                         .error(true)
                         .status(401)
                         .data({ error_code: err.name }))

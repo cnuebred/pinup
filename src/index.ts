@@ -1,6 +1,6 @@
-export { OneOrMany } from './utils'
-export { Component } from './utils'
-export { Reply } from './response'
+export { one_or_many } from './utils'
+export { pin_component as Component } from './utils'
+export { reply, Reply } from './response'
 
 export { pin, pins, need } from './controller'
 export { Pinup } from './router'

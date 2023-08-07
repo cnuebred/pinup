@@ -1,33 +1,11 @@
-import { Build } from '@cnuebred/hivecraft/dist/core'
 import cors from 'cors'
 import express, { NextFunction, Request, Response } from 'express'
 import { lstatSync, readdirSync } from 'fs'
 import path from 'path'
 import { Reply } from './response'
 import { MethodType, PinupConfigType, Controller, RequestMethod, MethodFunctionOptions, AuthType, ComponentTypeMethod, Pinpack } from './d'
-import { Component, OneOrMany } from './utils'
+import { pin_component, one_or_many, format, PinComponent } from './utils'
 import { SignOptions, sign } from 'jsonwebtoken'
-
-// eslint-disable-next-line no-extend-native
-Date.prototype.format = function (this: Date, time: string): string {
-    const add_zero = (text: string, size: number = 2) => ('0'.repeat(size) + text).slice(-size)
-    time = time.replaceAll(/\$ms/gm, add_zero(this.getMilliseconds().toString()))
-        .replaceAll(/\$s/gm, add_zero(this.getSeconds().toString()))
-        .replaceAll(/\$m/gm, add_zero(this.getMinutes().toString()))
-        .replaceAll(/\$h/gm, add_zero(this.getHours().toString()))
-        .replaceAll(/\$D/gm, add_zero(this.getDate().toString()))
-        .replaceAll(/\$M/gm, add_zero((this.getMonth() + 1).toString()))
-        .replaceAll(/\$Y/gm, add_zero(this.getFullYear().toString(), 4))
-
-    return time
-}
-// const Just = <T>(pack: T) => ({
-//     map: (fn: <T>(pack: T) => typeof Just<T>) => Just(fn(pack)),
-//     value_of: () => !Array.isArray(pack) ? [pack] : pack,
-//     exist: () => pack ? Just(pack) : Just([]),
-//     inspect: () => `Just(${pack})`,
-//     type: 'just'
-// })
 
 export const __provider__: Controller[] = []
 
@@ -39,8 +17,7 @@ const DEFAULT_PINUP_CONFIG: PinupConfigType = {
 
 export class Pinup {
     #provider: Controller[] = __provider__ // private
-    components: Component[] = [] // private
-    templates: Build[] = []
+    components: PinComponent[] = [] // private
     pinup_config: PinupConfigType = {}
     app: express.Express
 
@@ -62,7 +39,7 @@ export class Pinup {
     }
 
     private get_all_modules = (dirs: string | string[], callback: (relative_path: string) => void, filetype: string = '.ts') => {
-        OneOrMany(dirs).many().forEach(dir => {
+        one_or_many(dirs).many().forEach(dir => {
             if ((['node_modules', ...(this.pinup_config?.ignore_dirs || [])])
                 .includes(path.basename(path.dirname(dir)))) return null
             if ((['node_modules', ...(this.pinup_config?.ignore_dirs || [])])
@@ -83,11 +60,7 @@ export class Pinup {
 
     private require_middleware () {
         const callback = (path) => {
-            const component = require(path)
-            if (path.endsWith('.view.ts'))
-                Object.values(component).forEach((item: Build) => {
-                    this.templates.push(item)
-                })
+            require(path)
         }
 
         this.get_all_modules(this.pinup_config.provider_dir, callback, '.ts')
@@ -108,10 +81,10 @@ export class Pinup {
 
     setup () {
         this.#provider.forEach((module) => {
-            const component = Component({
+            const component = pin_component({
                 name: module.name,
-                path: OneOrMany(module.path),
-                full_path: OneOrMany(module.full_path),
+                path: one_or_many(module.path),
+                full_path: one_or_many(module.full_path),
                 methods: []
             })
             this.components.push(component)
@@ -119,15 +92,15 @@ export class Pinup {
                 component.set_method({
                     name: method.name,
                     method: method.method as RequestMethod,
-                    endpoint: OneOrMany(method.path),
-                    path: OneOrMany([...module.full_path, ...method.path].filter(item => !!item)),
+                    endpoint: one_or_many(method.path),
+                    path: one_or_many([...module.full_path, ...method.path].filter(item => !!item)),
                     parent: module,
                     foo: method.foo.bind(module),
                     data: method.data
                 })
             })
         })
-        this.components.forEach((component: Component) => {
+        this.components.forEach((component: PinComponent) => {
             const endpoint_callback = (req: Request, res: Response, next: NextFunction, item: ComponentTypeMethod) => {
                 const { pin } = this.pin_method_extensions(req, res, item)
                 const options: MethodFunctionOptions = {
@@ -161,7 +134,7 @@ export class Pinup {
     pin_method_extensions (req: Request, res: Response, item: ComponentTypeMethod) {
         const pin = {
             res: (reply: Reply) => { res.status(reply.value().status).json(reply.path(item.path.one('/')).value()) },
-            module: (name: string) => this.components.find((item: Component) => item.value_of().name == name),
+            module: (name: string) => this.components.find((item: PinComponent) => item.value_of().name == name),
             redirect: (
                 name: string,
                 query: { [index: string]: string } = {},
@@ -182,7 +155,7 @@ export class Pinup {
                 if (!this.pinup_config.request_logger) return ''
                 const date = new Date()
                 const parts = [
-                    date.format('[$h:$m:$s|$D.$M.$Y] '),
+                    format(date, '[$h:$m:$s|$D.$M.$Y] '),
                     item.method,
                     item.name,
                     req.route.path,

@@ -2,9 +2,8 @@
 /* eslint-disable no-use-before-define */
 import { NextFunction, Request, Response } from 'express'
 import { JwtPayload, SignOptions } from 'jsonwebtoken'
-import { CellRenderOptionsType } from '@cnuebred/hivecraft/dist/d'
 import { Reply } from './response'
-import { Component, OneOrMany } from './utils'
+import { OneOrMany, PinComponent } from './utils'
 
 declare global {
   export interface Date {
@@ -51,7 +50,7 @@ export type MethodFunctionOptions = {
   self: ComponentTypeMethod
   pin: {
     res: (reply:Reply) => void
-    module: (name: string) => Component
+    module: (name: string) => PinComponent
     log: () => void
     redirect: (
       name: string,
@@ -75,7 +74,6 @@ export type PinupType = {
     [K in RequestData]?: string[]
   }
   parent?: Controller
-  // eslint-disable-next-line no-use-before-define
   methods: MethodType[]
 }
 
@@ -127,8 +125,6 @@ export type PinupConfigType = {
   port?: number
   provider_dir?: string | string[]
   ignore_dirs?: string[]
-  template_dir?: string | string[]
-  template_render_options?: CellRenderOptionsType
   responses?: string | string[]
   request_logger?: boolean
   auth?: {
