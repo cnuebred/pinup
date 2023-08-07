@@ -1,9 +1,7 @@
 {
   "compilerOptions": {
-      "target": "ES2021",
+      "target": "ES2022",
       "module": "CommonJS",
-      "experimentalDecorators": true,
-      "emitDecoratorMetadata": true,
       "esModuleInterop": true,
       "sourceMap": false,
       "outDir": "dist",
@@ -12,5 +10,5 @@
   "include": [
       "src/**/*"
     ],
-    "exclude": ["node_modules"]
+    "exclude": ["node_modules", "test"]
 }
