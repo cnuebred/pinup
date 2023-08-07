@@ -9,7 +9,7 @@
   "types": "dist/index.d.ts",
   "scripts": {
     "prepublish": "tsc",
-    "dev": "nodemon --exec npx ts-node app.ts",
+    "dev": "nodemon --ignore test --exec npx ts-node app.ts",
     "test": "npx jest"
   },
   "keywords": [
@@ -28,19 +28,19 @@
     "eslint-plugin-import": "^2.27.5",
     "eslint-plugin-n": "^16.0.1",
     "eslint-plugin-promise": "^6.1.1",
+    "jest": "^29.6.2",
     "ts-jest": "^29.1.1",
     "typescript": "^5.1.6"
   },
   "peerDependencies": {
     "@types/express": "^4.17.17",
     "@types/jsonwebtoken": "^9.0.2",
+    "cors": "^2.8.5",
     "express": "^4.18.2",
-    "jsonwebtoken": "^9.0.1",
-    "cors": "^2.8.5"
+    "jsonwebtoken": "^9.0.1"
   },
   "dependencies": {
     "@types/jest": "^29.5.3",
-    "@types/node": "^20.3.3",
-    "jest": "^29.6.2"
+    "@types/node": "^20.3.3"
   }
 }
