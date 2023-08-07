@@ -1,6 +1,6 @@
 {
   "name": "pinup",
-  "version": "1.1.5",
+  "version": "1.1.6",
   "description": "",
   "main": "dist/index.js",
   "files": [
@@ -9,7 +9,8 @@
   "types": "dist/index.d.ts",
   "scripts": {
     "prepublish": "tsc",
-    "dev": "nodemon --ignore test --exec npx ts-node app.ts",
+    "publish": "npm publish --access public",
+    "dev": "nodemon --exec npx ts-node app.ts",
     "test": "npx jest"
   },
   "keywords": [
