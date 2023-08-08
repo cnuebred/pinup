@@ -1,7 +1,8 @@
 {
   "name": "pinup",
   "version": "1.1.8",
-  "description": "",
+  "description": "Pinup is a library that enables you to create simple and efficient REST APIs in TypeScript using the Express framework.",
+  "homepage": "https://github.com/cnuebred/pinup",
   "main": "dist/index.js",
   "files": [
     "dist"
@@ -19,6 +20,7 @@
     "REST",
     "Framework"
   ],
+  "repository":"https://github.com/cnuebred/pinup",
   "author": "Jonathan Cube",
   "license": "ISC",
   "devDependencies": {
