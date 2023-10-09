@@ -1,10 +1,9 @@
 /* eslint-disable no-unused-vars */
 /* eslint-disable no-use-before-define */
-import { NextFunction, Request, Response } from 'express'
+import express, { NextFunction, Request, Response } from 'express'
 import { JwtPayload, SignOptions } from 'jsonwebtoken'
-import { CellRenderOptionsType } from '@cnuebred/hivecraft/dist/d'
 import { Reply } from './response'
-import { Component, OneOrMany } from './utils'
+import { OneOrMany, PinComponent } from './utils'
 
 declare global {
   export interface Date {
@@ -42,7 +41,7 @@ export type AuthType = {
   secret?: string
   expires_in?: string | number | undefined
   passed?: boolean,
-  payload?: string | JwtPayload | null
+  payload?: JwtPayload | null
   sign: (payload: string | object | Buffer, secretOrPrivateKey?: null, options?: SignOptions & { algorithm: 'none' }) => string
 
 }
@@ -51,7 +50,7 @@ export type MethodFunctionOptions = {
   self: ComponentTypeMethod
   pin: {
     res: (reply:Reply) => void
-    module: (name: string) => Component
+    module: (name: string) => PinComponent
     log: () => void
     redirect: (
       name: string,
@@ -70,12 +69,12 @@ export type Controller = { new(...args: any[]) } & PinupType
 export type PinupType = {
   name: string
   path: string
+  initializer: (app: express.Express) => void
   full_path: string[]
   data: {
     [K in RequestData]?: string[]
   }
   parent?: Controller
-  // eslint-disable-next-line no-use-before-define
   methods: MethodType[]
 }
 
@@ -87,7 +86,7 @@ export type MethodType = {
   name: string,
   parent: Controller
   path: string[],
-  foo: (req: Request, res: Response, options: MethodFunctionOptions) => void
+  foo: ({ rec, rep, op }: Pinpack) => void
 }
 
 export type RequestMethod = 'get' | 'post' | 'patch' | 'delete' | 'put' | 'option'
@@ -126,11 +125,11 @@ export type ProviderType = {
 export type PinupConfigType = {
   port?: number
   provider_dir?: string | string[]
+  static_path?: string,
   ignore_dirs?: string[]
-  template_dir?: string | string[]
-  template_render_options?: CellRenderOptionsType
   responses?: string | string[]
-  request_logger?: boolean
+  request_logger?: boolean,
+  websocket_config?: PinupWsConfigType
   auth?: {
     secret?: string,
     expires_in?: string
@@ -140,4 +139,8 @@ export type PinupConfigType = {
 
 export type PinupOptionsType = {
   auth?: AuthType
+}
+
+export type PinupWsConfigType = {
+
 }

@@ -1,8 +1,8 @@
-import { verify } from 'jsonwebtoken'
+import { JwtPayload, verify } from 'jsonwebtoken'
 import { __provider__ } from './router'
 import { Controller, Pinpack, RequestMethod } from './d'
-import { OneOrMany, PINS_METHODS } from './utils'
-import { Reply } from './response'
+import { one_or_many, PINS_METHODS } from './utils'
+import { reply } from './response'
 
 export function pin (
     path: string,
@@ -11,44 +11,49 @@ export function pin (
     const parent = ParentClass ? new ParentClass() : undefined
     if (ParentClass && !parent?.private_controller_key)
         throw new Error(`Parent class '${ParentClass.name}' is not assignable to parameter of Controller class`)
-    return function (constructor: Controller) {
-        const PinupController = constructor
-        constructor.prototype.name = constructor.name
-        constructor.prototype.private_controller_key = true
-        constructor.prototype.path = path
-        constructor.prototype.full_path = [...parent?.full_path || '', path]
-        constructor.prototype.parent = ParentClass
 
-        __provider__.push(new PinupController())
+    return function <T extends Controller>
+    (OriginalMethod: T, context: ClassDecoratorContext): Controller {
+        const om = new OriginalMethod()
+        const SubController: Controller = class extends OriginalMethod {
+            name = context.name
+            private_controller_key = true
+            path = path
+            initializer = om.__init__
+            full_path = [...parent?.full_path || '', path]
+            parent = ParentClass
+        }
+        __provider__.push(new SubController())
+        return SubController
     }
 }
 
 const pins_wrapper = (method: RequestMethod, path: string | string[]) => {
-    return request_method_wrapper(method, OneOrMany(path).many(''))
+    return request_method_wrapper(method, one_or_many(path).many(''))
 }
-
 const request_method_wrapper = (request_method: RequestMethod, paths: string[]): any => {
-    return function (target: Controller, name: string, descriptor: PropertyDescriptor) {
-        if (!target.methods) target.methods = []
-        const method = descriptor.value
-
-        descriptor.value = function ({ rec, rep, op }: Pinpack) {
-            op.pin.log()
-            const context = method.bind(this)
+    return function (original_method: any, context: ClassMethodDecoratorContext<Controller>) {
+        function replacement_method ({ rec, rep, op }: Pinpack) {
+            const context = original_method.bind(this)
             context({ rec, rep, op })
         }
-        // console.log(paths)
-        paths.forEach(path => {
-            target.methods.push({
-                method: request_method,
-                name,
-                path: OneOrMany(path).many(''),
-                parent: target,
-                foo: descriptor.value,
-                data: { ...target.data } || {}
+
+        context.addInitializer(function () {
+            if (!this.methods) this.methods = []
+            paths.forEach(path => {
+                this.methods.push({
+                    method: request_method,
+                    name: context.name.toString(),
+                    path: one_or_many(path).many(''),
+                    parent: this,
+                    foo: replacement_method,
+                    data: { ...this.data } || {}
+                })
             })
+            this.data = {}
         })
-        target.data = {}
+
+        return replacement_method
     }
 }
 
@@ -58,9 +63,8 @@ export const pins = Object.fromEntries(PINS_METHODS.map((item: RequestMethod) =>
 })) as { [K in RequestMethod]: (...path: string[]) => any }
 
 const data_method_wrapper = (name_dataset: 'params' | 'query' | 'body' | 'headers', keys: string[]): any => {
-    return (target: Controller, name: string, descriptor: PropertyDescriptor) => {
-        const method = descriptor.value
-        descriptor.value = function ({ rec, rep, op }: Pinpack) {
+    return (original_method: any, context: ClassMethodDecoratorContext<Controller>) => {
+        function replacement_method ({ rec, rep, op }: Pinpack) {
             const req_dataset = rec[name_dataset]
             const require = []
             const dataset = keys.map(item => {
@@ -75,18 +79,21 @@ const data_method_wrapper = (name_dataset: 'params' | 'query' | 'body' | 'header
 
             if (require.length !== 0) {
                 return op.pin.res(
-                    Reply(`This endpoint require '${name_dataset}' with specific properties: ${require.join(', ')}`)
+                    reply(`This endpoint require '${name_dataset}' with specific properties: ${require.join(', ')}`)
                         .error(true)
                 )
             }
 
             op[name_dataset] = { ...op[name_dataset], ...Object.fromEntries(dataset) }
-            const context = method.bind(this)
+            const context = original_method.bind(this)
             context({ rec, rep, op })
         }
+        context.addInitializer(function () {
+            if (!this.data) this.data = {}
+            this.data[name_dataset] = keys
+        })
 
-        if (!target.data) target.data = {}
-        target.data[name_dataset] = keys
+        return replacement_method
     }
 }
 
@@ -97,35 +104,39 @@ export const need = {
     headers: (keys: string[]): any => data_method_wrapper('headers', keys)
 }
 
-export const auth = (error: boolean = true, jwt_secret?: string): any => {
-    return function (target: any, name: string, descriptor: TypedPropertyDescriptor<any>) {
-        const method = descriptor.value
+export const auth = (error: boolean = true, jwt_secret?: string, data_source?: 'params' | 'query' | 'body' | 'headers', data_name?: string): any => {
+    return function (original_method: any, context: ClassMethodDecoratorContext<Controller>) {
+        function replacement_method ({ rec, rep, op }: Pinpack) {
+            data_source = data_source || 'headers'
+            data_name = data_name || 'authorization'
 
-        descriptor.value = function ({ rec, rep, op }: Pinpack) {
-            if (!rec.headers.authorization)
+            const auth_data = rec[data_source]?.[data_name]
+            if (!auth_data && error)
                 return op.pin.res(
-                    Reply('This endpoint require \'header\' with specific properties: authorization')
+                    reply('This endpoint require \'header\' with specific properties: authorization')
                         .error(true)
                 )
             // eslint-disable-next-line no-unused-vars
-            const [prefix, token] = rec.headers.authorization.split(' ')
+            const auth = op.auth
             try {
-                const payload = verify(token, jwt_secret || op.auth.secret)
-                op.auth.payload = payload
-                op.auth.passed = true
+                const [prefix, token] = auth_data.split(' ')
+                const payload = verify(token, jwt_secret || auth.secret)
+                auth.payload = payload as JwtPayload
+                auth.passed = true
             } catch (err) {
                 if (error) {
-                    return op.pin.res(Reply(`${err.message} [${err.name}]`)
+                    return op.pin.res(reply(`${err.message} [${err.name}]`)
                         .error(true)
                         .status(401)
                         .data({ error_code: err.name }))
                 } else {
-                    op.auth.payload = null
-                    op.auth.passed = false
+                    auth.payload = null
+                    auth.passed = false
                 }
             }
-            const context = method.bind(this)
-            context({ rec, rep, options: op })
+            const context = original_method.bind(this)
+            context({ rec, rep, op })
         }
+        return replacement_method
     }
 }
