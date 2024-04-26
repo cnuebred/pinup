@@ -15,13 +15,15 @@ export function pin (
     return function <T extends Controller>
     (OriginalMethod: T, context: ClassDecoratorContext): Controller {
         const om = new OriginalMethod()
+
         const SubController: Controller = class extends OriginalMethod {
             name = context.name
             private_controller_key = true
             path = path
             initializer = om.__init__
             full_path = [...parent?.full_path || '', path]
-            parent = ParentClass
+            parent_name = parent?.name
+            parent = parent
         }
         __provider__.push(new SubController())
         return SubController
@@ -31,6 +33,7 @@ export function pin (
 const pins_wrapper = (method: RequestMethod, path: string | string[]) => {
     return request_method_wrapper(method, one_or_many(path).many(''))
 }
+
 const request_method_wrapper = (request_method: RequestMethod, paths: string[]): any => {
     return function (original_method: any, context: ClassMethodDecoratorContext<Controller>) {
         function replacement_method ({ rec, rep, op }: Pinpack) {
@@ -68,8 +71,10 @@ const data_method_wrapper = (name_dataset: 'params' | 'query' | 'body' | 'header
             const req_dataset = rec[name_dataset]
             const require = []
             const dataset = keys.map(item => {
-                return [item, req_dataset[item]]
+                return [item, req_dataset[item.startsWith('?') ? item.slice(1) : item]]
             }).filter(([key, value]) => {
+                if(key.startsWith('?'))
+                    return true
                 if (!value) {
                     require.push(key)
                     return false
@@ -80,6 +85,7 @@ const data_method_wrapper = (name_dataset: 'params' | 'query' | 'body' | 'header
             if (require.length !== 0) {
                 return op.pin.res(
                     reply(`This endpoint require '${name_dataset}' with specific properties: ${require.join(', ')}`)
+                        .status(400)
                         .error(true)
                 )
             }
@@ -114,6 +120,7 @@ export const auth = (error: boolean = true, jwt_secret?: string, data_source?: '
             if (!auth_data && error)
                 return op.pin.res(
                     reply('This endpoint require \'header\' with specific properties: authorization')
+                        .status(400)
                         .error(true)
                 )
             // eslint-disable-next-line no-unused-vars

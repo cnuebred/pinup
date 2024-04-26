@@ -74,6 +74,7 @@ export type PinupType = {
   data: {
     [K in RequestData]?: string[]
   }
+  parent_name: string
   parent?: Controller
   methods: MethodType[]
 }
@@ -126,6 +127,7 @@ export type PinupConfigType = {
   port?: number
   provider_dir?: string | string[]
   static_path?: string,
+  files_ext?: string[]
   ignore_dirs?: string[]
   responses?: string | string[]
   request_logger?: boolean,

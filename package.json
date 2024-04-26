@@ -1,6 +1,6 @@
 {
   "name": "pinup",
-  "version": "1.1.9",
+  "version": "1.1.12",
   "description": "Pinup is a library that enables you to create simple and efficient REST APIs in TypeScript using the Express framework.",
   "homepage": "https://github.com/cnuebred/pinup",
   "main": "dist/index.js",
@@ -12,7 +12,8 @@
     "prepublish": "tsc",
     "publish": "npm publish --access public",
     "dev": "npx nodemon --exec npx ts-node app.ts",
-    "test": "npx jest"
+    "test": "npx jest",
+    "version": "node version-bump.mjs"
   },
   "keywords": [
     "Pinup",
@@ -45,6 +46,7 @@
   "dependencies": {
     "@types/jest": "^29.5.3",
     "@types/node": "^20.3.3",
+    "supertest": "^6.3.4",
     "ws": "^8.14.2"
   }
 }

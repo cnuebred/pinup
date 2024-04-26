@@ -17,7 +17,8 @@ const DEFAULT_PINUP_CONFIG: PinupConfigType = {
     port: 3000,
     provider_dir: path.resolve(''),
     static_path: '/',
-    request_logger: true
+    request_logger: true,
+    files_ext: ['.ts']
 }
 const DEFAULT_PINUPWS_CONFIG: PinupWsConfigType = {
     port: 3000,
@@ -29,11 +30,11 @@ export class PinupWss {
     path: string
     port: number
     wss: WebSocketServer
-    constructor (pinupws_config: PinupWsConfigType = {}) {
+    constructor(pinupws_config: PinupWsConfigType = {}) {
         this.pinupws_config = { ...DEFAULT_PINUPWS_CONFIG, ...pinupws_config }
     }
 
-    setup (path: string, port: number) {
+    setup(path: string, port: number) {
         this.path = path
         this.port = port
         this.wss = new WebSocketServer({ noServer: true });
@@ -48,19 +49,19 @@ export class Pinup {
     component_paths: string[] = []
     app: express.Express
 
-    constructor (app: express.Express, pinup_config: PinupConfigType = {}) {
+    constructor(app: express.Express, pinup_config: PinupConfigType = {}) {
         this.app = app
         this.pinup_config = { ...DEFAULT_PINUP_CONFIG, ...pinup_config }
         this.pre_setup()
         this.require_middleware()
     }
 
-    private pre_setup () {
+    private pre_setup() {
         this.app.use(express.json())
         this.app.use(cors())
     }
 
-    private transform_path (component_path: string[]) {
+    private transform_path(component_path: string[]) {
         component_path = component_path.map(item => {
             if (item.startsWith('/'))
                 item = item.slice(1)
@@ -71,7 +72,7 @@ export class Pinup {
         return `/${component_path.join('/')}`
     }
 
-    private get_all_modules = (dirs: string | string[], callback: (relative_path: string) => void, filetype: string = '.ts') => {
+    private get_all_modules = (dirs: string | string[], callback: (relative_path: string) => void, filetype: string[] = ['.ts']) => {
         one_or_many(dirs).many().forEach(dir => {
             const inside_dir = readdirSync(dir).map(item => {
                 if (!(['node_modules', ...(this.pinup_config?.ignore_dirs || [])])
@@ -79,29 +80,30 @@ export class Pinup {
                     return path.resolve(path.join(dir, item))
                 return null
             }).filter(item => !!item)
+
             inside_dir.forEach(dir_elements => {
                 dir = path.resolve(dir_elements)
                 if (lstatSync(dir).isDirectory())
                     return this.get_all_modules([dir], callback, filetype)
-                if (!dir.endsWith(filetype)) return null
-
+                const ext = dir.slice(dir.lastIndexOf('.'))
+                if (!filetype.includes(ext)) return null
                 callback(path.resolve(dir))
             })
         })
     }
 
-    private async require_middleware () {
-        const callback = async (component_path) => {
+    private async require_middleware() {
+        const callback = async (component_path: string) => {
             const path_dirname = path.dirname(component_path)
             if (!this.component_paths.includes(path_dirname))
                 this.component_paths.push(path_dirname)
             require(component_path)
         }
-
-        this.get_all_modules(this.pinup_config.provider_dir, callback, '.ts')
+        this.pinup_config.files_ext = this.pinup_config.files_ext.map(item => item.startsWith('.') ? item : '.' + item)
+        this.get_all_modules(this.pinup_config.provider_dir, callback, this.pinup_config.files_ext)
     }
 
-    private authorization_jwt () {
+    private authorization_jwt() {
         if (!this.pinup_config?.auth?.secret) {
             throw Error('You cannot use auth properties due they\'re disable. Type auth secret in Pinup options')
         }
@@ -117,7 +119,7 @@ export class Pinup {
         return auth
     }
 
-    async setup () {
+    async setup() {
         for (const module of this.#provider) {
             if (module.initializer) await module.initializer(this.app)
             const component = pin_component({
@@ -163,7 +165,7 @@ export class Pinup {
         })
     }
 
-    pin_method_extensions (req: Request, res: Response, item: ComponentTypeMethod) {
+    pin_method_extensions(req: Request, res: Response, item: ComponentTypeMethod) {
         const pin = {
             res: (reply: Reply) => { res.status(reply.value().status).json(reply.path(item.path.one('/')).value()) },
             module: (name: string) => this.components.find((item: PinComponent) => item.value_of().name == name),
@@ -204,7 +206,7 @@ export class Pinup {
         return { pin }
     }
 
-    async run (logger: boolean = true): Promise<void> {
+    async run(logger: boolean = true): Promise<void> {
         const start_time = performance.now()
         await this.setup()
         const server = this.app.listen(this.pinup_config.port, () => {
@@ -214,13 +216,21 @@ export class Pinup {
             if (logger) {
                 this.pinup_config.request_logger = logger
                 const methods = []
+                const parent_name = (parent: Controller) => {
+                    const names = []
+                    while(parent?.name){
+                        names.push(parent.name)
+                        parent = parent.parent
+                    }
+                    return names
+                }
                 this.components.forEach(item => {
-                    item.for_each_methods(method => {
+                    item.for_each_methods((method: ComponentTypeMethod) => {
                         methods.push({
                             method: method.method,
-                            component: method.parent.name,
+                            component: parent_name(method.parent).join('<-'),
                             name: method.name,
-                            path: this.transform_path(method.path.value_of())
+                            path: '...' + this.transform_path(method.path.value_of()).slice(-70)
                         })
                     })
                 })
@@ -241,7 +251,7 @@ export class Pinup {
         })
     }
 
-    add_websocket (path: string = '/', callback: (wss: WebSocketServer) => void, port: number = null) {
+    add_websocket(path: string = '/', callback: (wss: WebSocketServer) => void, port: number = null) {
         const wss = new PinupWss(this.pinup_config?.websocket_config)
         this.websocket_list.push(wss)
         wss.setup(path, port)
@@ -249,13 +259,17 @@ export class Pinup {
         return wss.wss
     }
 
-    add_static_path_of_components (add_static_path: string = '', static_dir_path?: (item: path.ParsedPath) => string) {
+    add_static_path_of_components(add_static_path: string = '', static_dir_path?: (item: path.ParsedPath) => string) {
         this.component_paths.forEach(item => {
-            this.add_static_path(path.join(path.relative('./', item), add_static_path), !static_dir_path ? null : static_dir_path(path.parse(item)))
+            this.add_static_path(
+                path.join(
+                    path.relative('./', item), add_static_path
+                ), !static_dir_path ? null : static_dir_path(path.parse(item))
+            )
         })
     }
 
-    add_static_path (files_path: string, static_dir?: string) {
+    add_static_path(files_path: string, static_dir?: string) {
         this.app.use(
             static_dir || this.pinup_config.static_path,
             express.static(path.resolve(files_path))
