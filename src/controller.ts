@@ -40,9 +40,9 @@ const request_method_wrapper = (request_method: RequestMethod, paths: string[]):
             const context = original_method.bind(this)
             context({ rec, rep, op })
         }
-
         context.addInitializer(function () {
             if (!this.methods) this.methods = []
+
             paths.forEach(path => {
                 this.methods.push({
                     method: request_method,

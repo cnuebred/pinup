@@ -35,3 +35,57 @@ export const format = function (date: Date, time: string): string {
 
     return time
 }
+
+
+export const $path = (...path: string[]) => ({
+    normalize: () => {
+        let path_mut = path.join('/')
+        path_mut = path_mut.replaceAll(/^(\.*\/*)(.+?)(\/*)$/gm, '$2')
+        path_mut = path_mut.replaceAll(/\/{2,}/gm, '/')
+        return `/${path_mut}`
+    },
+    split: () => $path(...path).normalize().split('/').filter(item => item != ''),
+    join: (new_path: string, to_end: boolean = true) =>
+        to_end ? $path(...path).normalize() + $path(new_path).normalize() :
+            $path(new_path).normalize() + $path(...path).normalize(),
+
+    to_string: () => path.join('/').toString()
+})
+
+export enum ColorCode {
+    RED,
+    GREEN,
+    YELLOW,
+    BLUE,
+    MAGENTA,
+    CYAN,
+    WHITE,
+    DEFAULT
+}
+
+export function colorCode(color?: ColorCode): string {
+    switch (color) {
+        case ColorCode.RED:
+            return '\x1b[31m'; // ANSI kod dla czerwonego
+        case ColorCode.GREEN:
+            return '\x1b[32m'; // ANSI kod dla zielonego
+        case ColorCode.YELLOW:
+            return '\x1b[33m'; // ANSI kod dla żółtego
+        case ColorCode.BLUE:
+            return '\x1b[34m'; // ANSI kod dla niebieskiego
+        case ColorCode.MAGENTA:
+            return '\x1b[35m'; // ANSI kod dla magenty
+        case ColorCode.CYAN:
+            return '\x1b[36m'; // ANSI kod dla cyjanu
+        case ColorCode.WHITE:
+            return '\x1b[37m'; // ANSI kod dla białego
+        default:
+            return '\x1b[39m'; // ANSI kod dla domyślnego koloru
+    }
+}
+
+export function colorize(text: string, color: ColorCode = ColorCode.DEFAULT): string {
+    const startColor = colorCode(color);
+    const resetColor = '\x1b[0m';
+    return `${startColor}${text}${resetColor}`;
+}

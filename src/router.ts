@@ -2,9 +2,9 @@ import cors from 'cors'
 import express, { NextFunction, Request, Response } from 'express'
 import { lstatSync, readdirSync } from 'fs'
 import path from 'path'
-import { Reply } from './response'
-import { MethodType, PinupConfigType, Controller, RequestMethod, MethodFunctionOptions, AuthType, ComponentTypeMethod, Pinpack, PinupWsConfigType } from './d'
-import { pin_component, one_or_many, format, PinComponent } from './utils'
+import { Reply, reply } from './response'
+import { MethodType, PinupConfigType, Controller, RequestMethod, MethodFunctionOptions, AuthType, ComponentTypeMethod, Pinpack, PinupWsConfigType, PinupController } from './d'
+import { pin_component, one_or_many, format, PinComponent, $path, colorize, ColorCode } from './utils'
 import { SignOptions, sign } from 'jsonwebtoken'
 
 // eslint-disable-next-line n/no-deprecated-api
@@ -42,8 +42,8 @@ export class PinupWss {
 }
 
 export class Pinup {
-    #provider: Controller[] = __provider__ // private
-    components: PinComponent[] = [] // private
+    // #provider: Controller[] = __provider__ // private
+    #controllers: PinupController[] = [] // private
     websocket_list: PinupWss[] = []
     pinup_config: PinupConfigType = {}
     component_paths: string[] = []
@@ -53,7 +53,6 @@ export class Pinup {
         this.app = app
         this.pinup_config = { ...DEFAULT_PINUP_CONFIG, ...pinup_config }
         this.pre_setup()
-        this.require_middleware()
     }
 
     private pre_setup() {
@@ -61,46 +60,19 @@ export class Pinup {
         this.app.use(cors())
     }
 
-    private transform_path(component_path: string[]) {
-        component_path = component_path.map(item => {
-            if (item.startsWith('/'))
-                item = item.slice(1)
-            if (item.endsWith('/'))
-                item = item.slice(0, -1)
-            return item
-        }).filter(item => !!item)
-        return `/${component_path.join('/')}`
-    }
+    public pin(ModulePinupController: new (...args: any[]) => PinupController) {
+        const module = new ModulePinupController()
+        module.$init()
 
-    private get_all_modules = (dirs: string | string[], callback: (relative_path: string) => void, filetype: string[] = ['.ts']) => {
-        one_or_many(dirs).many().forEach(dir => {
-            const inside_dir = readdirSync(dir).map(item => {
-                if (!(['node_modules', ...(this.pinup_config?.ignore_dirs || [])])
-                    .includes(item))
-                    return path.resolve(path.join(dir, item))
-                return null
-            }).filter(item => !!item)
-
-            inside_dir.forEach(dir_elements => {
-                dir = path.resolve(dir_elements)
-                if (lstatSync(dir).isDirectory())
-                    return this.get_all_modules([dir], callback, filetype)
-                const ext = dir.slice(dir.lastIndexOf('.'))
-                if (!filetype.includes(ext)) return null
-                callback(path.resolve(dir))
-            })
-        })
-    }
-
-    private async require_middleware() {
-        const callback = async (component_path: string) => {
-            const path_dirname = path.dirname(component_path)
-            if (!this.component_paths.includes(path_dirname))
-                this.component_paths.push(path_dirname)
-            require(component_path)
+        this.#controllers.push(module)
+        const append_children = (children: PinupController[]) => {
+            for (const child of children) {
+                child.$init()
+                this.#controllers.push(child)
+                append_children(child.children)
+            }
         }
-        this.pinup_config.files_ext = this.pinup_config.files_ext.map(item => item.startsWith('.') ? item : '.' + item)
-        this.get_all_modules(this.pinup_config.provider_dir, callback, this.pinup_config.files_ext)
+        append_children(module.children)
     }
 
     private authorization_jwt() {
@@ -120,32 +92,10 @@ export class Pinup {
     }
 
     async setup() {
-        for (const module of this.#provider) {
-            if (module.initializer) await module.initializer(this.app)
-            const component = pin_component({
-                name: module.name,
-                path: one_or_many(module.path),
-                full_path: one_or_many(module.full_path),
-                methods: []
-            })
-            this.components.push(component)
-            if (module.methods)
-                module.methods.forEach((method: MethodType) => {
-                    component.set_method({
-                        name: method.name,
-                        method: method.method as RequestMethod,
-                        endpoint: one_or_many(method.path),
-                        path: one_or_many([...module.full_path, ...method.path].filter(item => !!item)),
-                        parent: module,
-                        foo: method.foo.bind(module),
-                        data: method.data
-                    })
-                })
-        }
-        this.components.forEach((component: PinComponent) => {
+        for (const module of this.#controllers) {
             const endpoint_callback = (req: Request, res: Response, next: NextFunction, item: ComponentTypeMethod) => {
-                const { pin } = this.pin_method_extensions(req, res, item)
-                const options: MethodFunctionOptions = {
+                const pin = this.pin_method_extensions(req, res, item)
+                const options = {
                     auth: this.authorization_jwt(),
                     self: item,
                     query: {},
@@ -155,55 +105,52 @@ export class Pinup {
                     next,
                     pin
                 }
-                return item.foo({ rec: req, rep: res, op: options } as Pinpack)
+                try {
+                    return item.action({ rec: req, rep: res, op: options } as Pinpack)
+                } catch (err) {
+                    return options.pin.res(reply(`Pinup Error: ${err.message}`).error(true).status(500))
+                }
             }
-            component.for_each_methods(item => {
-                this.app[item.method](
-                    this.transform_path(item.path.value_of()),
-                    (req: Request, res: Response, next: NextFunction) => endpoint_callback(req, res, next, item))
-            })
-        })
+            if (module.methods)
+                for (const method of module.methods) {
+                    const parsed_method: ComponentTypeMethod = {
+                        name: method.name,
+                        method: method.method as RequestMethod,
+                        endpoint: $path(...method.path).normalize(),
+                        path: $path(module.full_path, ...method.path).normalize(),
+                        parent: module,
+                        action: method.foo.bind(module),
+                        data: method.data
+                    }
+                    this.app[parsed_method.method](
+                        parsed_method.path,
+                        (req: Request, res: Response, next: NextFunction) => endpoint_callback(req, res, next, parsed_method))
+                }
+        }
     }
 
     pin_method_extensions(req: Request, res: Response, item: ComponentTypeMethod) {
-        const pin = {
-            res: (reply: Reply) => { res.status(reply.value().status).json(reply.path(item.path.one('/')).value()) },
-            module: (name: string) => this.components.find((item: PinComponent) => item.value_of().name == name),
-            redirect: (
-                name: string,
-                query: { [index: string]: string } = {},
-                params: { [index: string]: string } = {}
-            ) => {
-                const create_query = () => Object.entries(query).map(([key, value]) => `${key}=${value}`).join('&')
-                const create_params = (path: string) => {
-                    Object.entries(params).forEach(([key, value]) => {
-                        path = path.replace(`:${key}`, value)
-                    })
-                    return path
-                }
-                if (!pin.module(name)) { throw new Error('This module doesn\'t exist') }
-
-                res.redirect(create_params(this.transform_path((pin.module(name).value_of().path.value_of()))) + '?' + create_query())
-            },
-            log: () => {
+        return {
+            res: (reply: Reply) => { res.status(reply.value().status).json(reply.path(item.path).value()) },
+            log: (message?: string) => {
                 if (!this.pinup_config.request_logger) return ''
                 const date = new Date()
-                const parts = [
-                    format(date, '[$h:$m:$s|$D.$M.$Y] '),
-                    item.method,
-                    item.name,
-                    req.route.path,
-                    req.headers['user-agent'],
-                    `Auth: ${!!req.headers.authorization}`,
-                    ''
-                ]
-                const log = parts.join('\t|')
+                const date_format = format(date, '$D/$M/$Y|$h:$m:$s')
+                const method = item.method
+                const name = item.parent.constructor.name
+                const path = req.route.path
+                const auth = `(auth:${!!req.headers.authorization})`
+                const time_string = `[${colorize(date_format, ColorCode.YELLOW)}]`
+                const method_path_string = `{${colorize(method.toUpperCase(), ColorCode.GREEN)}, ${colorize(path, ColorCode.GREEN)}}`
+                const data_formats = Object.keys(item.data)
+                const log_localization = `[${colorize(name, ColorCode.CYAN)}.${colorize(item.name, ColorCode.MAGENTA)}, ${colorize(auth, ColorCode.RED)} ${data_formats}]`
+
+
+                const log = `${time_string} ${log_localization} ${method_path_string} ${!!message ? colorize(message, ColorCode.BLUE) : ''}`
                 console.log(log)
                 return log
             }
         }
-
-        return { pin }
     }
 
     async run(logger: boolean = true): Promise<void> {
@@ -218,21 +165,22 @@ export class Pinup {
                 const methods = []
                 const parent_name = (parent: Controller) => {
                     const names = []
-                    while(parent?.name){
-                        names.push(parent.name)
+                    while (parent?.constructor.name) {
+                        names.push(parent.constructor.name)
                         parent = parent.parent
                     }
                     return names
                 }
-                this.components.forEach(item => {
-                    item.for_each_methods((method: ComponentTypeMethod) => {
+                this.#controllers.forEach(item => {
+                    for (const method of item.methods) {
+                        console.log(method.parent)
                         methods.push({
                             method: method.method,
                             component: parent_name(method.parent).join('<-'),
                             name: method.name,
-                            path: '...' + this.transform_path(method.path.value_of()).slice(-70)
+                            path: '...' + $path(method.parent.full_path, ...method.path).normalize().slice(-70)
                         })
-                    })
+                    }
                 })
                 console.table(methods)
             }
@@ -276,3 +224,19 @@ export class Pinup {
         )
     }
 }
+
+
+/**
+ * $path - transfer path to path's spectrum :)
+ *
+ * .normalize() -> transfer to single path
+ *
+ */
+
+// /path/to/endpoint
+// ./path/to/endpoint
+// path/to/endpoint
+// /path/to/endpoint/
+
+
+

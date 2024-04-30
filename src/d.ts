@@ -3,7 +3,7 @@
 import express, { NextFunction, Request, Response } from 'express'
 import { JwtPayload, SignOptions } from 'jsonwebtoken'
 import { Reply } from './response'
-import { OneOrMany, PinComponent } from './utils'
+import { $path, OneOrMany, PinComponent } from './utils'
 
 declare global {
   export interface Date {
@@ -18,14 +18,14 @@ export type Pinpack = {
 
 export type ComponentTypeMethod = {
   name: string,
-  endpoint: OneOrMany<string>,
-  path: OneOrMany<string>,
+  endpoint: string,
+  path: string,
   method: RequestMethod
-  parent: Controller
-  foo: ({ rec, rep, op }: Pinpack) => any,
+  parent: PinupController
+  action: ({ rec, rep, op }: Pinpack) => any,
   data: {
-      // eslint-disable-next-line no-unused-vars
-      [index in RequestData]?: string[]
+    // eslint-disable-next-line no-unused-vars
+    [index in RequestData]?: string[]
   }
 }
 
@@ -49,14 +49,8 @@ export type MethodFunctionOptions = {
   next: NextFunction
   self: ComponentTypeMethod
   pin: {
-    res: (reply:Reply) => void
-    module: (name: string) => PinComponent
-    log: () => void
-    redirect: (
-      name: string,
-      query?: { [index: string]: string },
-      params?: { [index: string]: string }
-    ) => void
+    res: (reply: Reply) => void
+    log: (message?: string) => void
   }
   auth: AuthType
   params: book<string>
@@ -70,7 +64,7 @@ export type PinupType = {
   name: string
   path: string
   initializer: (app: express.Express) => void
-  full_path: string[]
+  full_path: string
   data: {
     [K in RequestData]?: string[]
   }
@@ -145,4 +139,51 @@ export type PinupOptionsType = {
 
 export type PinupWsConfigType = {
 
+}
+
+
+enum PinupControllerTypeEnum {
+  DEFAULT,
+  CUSTOM,
+  VIEW,
+  LOGIN,
+  RESOLVER
+}
+
+export type CustomPinupController = new (...args: any[]) => PinupController
+
+export abstract class PinupController {
+    #parent: PinupController | null = null
+    #children: PinupController[] = []
+    #path: string = '/'
+    #type: PinupControllerTypeEnum = PinupControllerTypeEnum.DEFAULT
+    constructor() { }
+    methods: MethodType[]
+    
+    get parent(): PinupController { return this.#parent }
+
+    get type():PinupControllerTypeEnum { return this.#type }
+    set type(value:PinupControllerTypeEnum) { this.#type = value }
+
+    get path():string { return this.#path }
+    set path(value: string) { this.#path = $path(value).normalize() }
+    
+    get full_path(): string { 
+      if(this.parent)
+        return $path(this.parent.full_path).join(this.path) 
+
+      return this.path
+     }
+    get children(): PinupController[] { return this.#children }
+
+    abstract $init(): void
+
+    pin(child: CustomPinupController){
+        const child_module = new child()
+        child_module.#parent = this
+        this.#children.push(child_module)
+        return this
+    }
+
+    debug_show_statistic() {}
 }

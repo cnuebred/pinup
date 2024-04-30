@@ -25,6 +25,7 @@
   "author": "Jonathan Cube",
   "license": "ISC",
   "devDependencies": {
+    "@types/bun": "^1.1.0",
     "@typescript-eslint/eslint-plugin": "^5.61.0",
     "@typescript-eslint/parser": "^5.61.0",
     "eslint": "^8.44.0",
