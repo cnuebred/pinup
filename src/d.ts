@@ -3,7 +3,8 @@
 import express, { NextFunction, Request, Response } from 'express'
 import { JwtPayload, SignOptions } from 'jsonwebtoken'
 import { Reply } from './response'
-import { $path, OneOrMany, PinComponent } from './utils'
+import { $path, OneOrMany } from './utils'
+import { PinupController } from './controller'
 
 declare global {
   export interface Date {
@@ -119,18 +120,13 @@ export type ProviderType = {
 
 export type PinupConfigType = {
   port?: number
-  provider_dir?: string | string[]
   static_path?: string,
-  files_ext?: string[]
-  ignore_dirs?: string[]
-  responses?: string | string[]
-  request_logger?: boolean,
-  websocket_config?: PinupWsConfigType
+  logger?: boolean,
+  ws_config?: PinupWsConfigType
   auth?: {
     secret?: string,
     expires_in?: string
   }
-  logger?: (port) => string
 }
 
 export type PinupOptionsType = {
@@ -142,7 +138,7 @@ export type PinupWsConfigType = {
 }
 
 
-enum PinupControllerTypeEnum {
+export enum PinupControllerTypeEnum {
   DEFAULT,
   CUSTOM,
   VIEW,
@@ -152,38 +148,3 @@ enum PinupControllerTypeEnum {
 
 export type CustomPinupController = new (...args: any[]) => PinupController
 
-export abstract class PinupController {
-    #parent: PinupController | null = null
-    #children: PinupController[] = []
-    #path: string = '/'
-    #type: PinupControllerTypeEnum = PinupControllerTypeEnum.DEFAULT
-    constructor() { }
-    methods: MethodType[]
-    
-    get parent(): PinupController { return this.#parent }
-
-    get type():PinupControllerTypeEnum { return this.#type }
-    set type(value:PinupControllerTypeEnum) { this.#type = value }
-
-    get path():string { return this.#path }
-    set path(value: string) { this.#path = $path(value).normalize() }
-    
-    get full_path(): string { 
-      if(this.parent)
-        return $path(this.parent.full_path).join(this.path) 
-
-      return this.path
-     }
-    get children(): PinupController[] { return this.#children }
-
-    abstract $init(): void
-
-    pin(child: CustomPinupController){
-        const child_module = new child()
-        child_module.#parent = this
-        this.#children.push(child_module)
-        return this
-    }
-
-    debug_show_statistic() {}
-}

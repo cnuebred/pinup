@@ -3,22 +3,21 @@ import express, { NextFunction, Request, Response } from 'express'
 import { lstatSync, readdirSync } from 'fs'
 import path from 'path'
 import { Reply, reply } from './response'
-import { MethodType, PinupConfigType, Controller, RequestMethod, MethodFunctionOptions, AuthType, ComponentTypeMethod, Pinpack, PinupWsConfigType, PinupController } from './d'
-import { pin_component, one_or_many, format, PinComponent, $path, colorize, ColorCode } from './utils'
+import { MethodType, PinupConfigType, Controller, RequestMethod, MethodFunctionOptions, AuthType, ComponentTypeMethod, Pinpack, PinupWsConfigType } from './d'
+import { one_or_many, format, $path, colorize, ColorCode } from './utils'
 import { SignOptions, sign } from 'jsonwebtoken'
 
 // eslint-disable-next-line n/no-deprecated-api
 import { parse } from 'url';
 import { WebSocketServer } from 'ws';
+import { PinupController } from './controller'
 
 export const __provider__: Controller[] = []
 
 const DEFAULT_PINUP_CONFIG: PinupConfigType = {
     port: 3000,
-    provider_dir: path.resolve(''),
     static_path: '/',
-    request_logger: true,
-    files_ext: ['.ts']
+    logger: true
 }
 const DEFAULT_PINUPWS_CONFIG: PinupWsConfigType = {
     port: 3000,
@@ -42,20 +41,19 @@ export class PinupWss {
 }
 
 export class Pinup {
-    // #provider: Controller[] = __provider__ // private
-    #controllers: PinupController[] = [] // private
-    websocket_list: PinupWss[] = []
-    pinup_config: PinupConfigType = {}
-    component_paths: string[] = []
+    #controllers: PinupController[] = []
+    #websocket_list: PinupWss[] = []
+    #config: PinupConfigType = {}
+    static_dirs: string[][] = []
     app: express.Express
 
     constructor(app: express.Express, pinup_config: PinupConfigType = {}) {
         this.app = app
-        this.pinup_config = { ...DEFAULT_PINUP_CONFIG, ...pinup_config }
-        this.pre_setup()
+        this.#config = { ...DEFAULT_PINUP_CONFIG, ...pinup_config }
+        this.app_express_middleware()
     }
 
-    private pre_setup() {
+    private app_express_middleware() {
         this.app.use(express.json())
         this.app.use(cors())
     }
@@ -63,25 +61,27 @@ export class Pinup {
     public pin(ModulePinupController: new (...args: any[]) => PinupController) {
         const module = new ModulePinupController()
         module.$init()
-
+        this.static_dirs.push(...module.static_dirs)
         this.#controllers.push(module)
         const append_children = (children: PinupController[]) => {
             for (const child of children) {
                 child.$init()
+                this.static_dirs.push(...child.static_dirs)
                 this.#controllers.push(child)
                 append_children(child.children)
             }
         }
         append_children(module.children)
+        this.add_static_dirs()
     }
 
     private authorization_jwt() {
-        if (!this.pinup_config?.auth?.secret) {
+        if (!this.#config?.auth?.secret) {
             throw Error('You cannot use auth properties due they\'re disable. Type auth secret in Pinup options')
         }
         const auth: AuthType = {
-            secret: this.pinup_config?.auth?.secret || 'secret',
-            expires_in: this.pinup_config?.auth?.expires_in || '1h',
+            secret: this.#config?.auth?.secret || 'secret',
+            expires_in: this.#config?.auth?.expires_in || '1h',
             passed: undefined,
             payload: null,
             sign: (payload: string | object | Buffer, secretOrPrivateKey?: null, options?: SignOptions & { algorithm: 'none' }) => {
@@ -106,6 +106,9 @@ export class Pinup {
                     pin
                 }
                 try {
+                    if (this.#config.logger)
+                        options.pin.log('LOG')
+
                     return item.action({ rec: req, rep: res, op: options } as Pinpack)
                 } catch (err) {
                     return options.pin.res(reply(`Pinup Error: ${err.message}`).error(true).status(500))
@@ -133,7 +136,6 @@ export class Pinup {
         return {
             res: (reply: Reply) => { res.status(reply.value().status).json(reply.path(item.path).value()) },
             log: (message?: string) => {
-                if (!this.pinup_config.request_logger) return ''
                 const date = new Date()
                 const date_format = format(date, '$D/$M/$Y|$h:$m:$s')
                 const method = item.method
@@ -144,8 +146,6 @@ export class Pinup {
                 const method_path_string = `{${colorize(method.toUpperCase(), ColorCode.GREEN)}, ${colorize(path, ColorCode.GREEN)}}`
                 const data_formats = Object.keys(item.data)
                 const log_localization = `[${colorize(name, ColorCode.CYAN)}.${colorize(item.name, ColorCode.MAGENTA)}, ${colorize(auth, ColorCode.RED)} ${data_formats}]`
-
-
                 const log = `${time_string} ${log_localization} ${method_path_string} ${!!message ? colorize(message, ColorCode.BLUE) : ''}`
                 console.log(log)
                 return log
@@ -156,12 +156,11 @@ export class Pinup {
     async run(logger: boolean = true): Promise<void> {
         const start_time = performance.now()
         await this.setup()
-        const server = this.app.listen(this.pinup_config.port, () => {
+        const server = this.app.listen(this.#config.port, () => {
             console.log(`Server build in ${Math.ceil((performance.now() - start_time)) / 1000}s`)
-            console.log(`Server is running on ${this.pinup_config.port}`)
-            console.log(`Authentication JWT ${this.pinup_config?.auth?.secret ? 'enabled with' : 'disable'}  ${'*'.repeat(this.pinup_config?.auth?.secret?.length || 0)}`)
+            console.log(`Server is running on ${this.#config.port}`)
+            console.log(`Authentication JWT ${this.#config?.auth?.secret ? 'enabled with' : 'disable'}  ${'*'.repeat(this.#config?.auth?.secret?.length || 0)}`)
             if (logger) {
-                this.pinup_config.request_logger = logger
                 const methods = []
                 const parent_name = (parent: Controller) => {
                     const names = []
@@ -173,7 +172,6 @@ export class Pinup {
                 }
                 this.#controllers.forEach(item => {
                     for (const method of item.methods) {
-                        console.log(method.parent)
                         methods.push({
                             method: method.method,
                             component: parent_name(method.parent).join('<-'),
@@ -186,7 +184,7 @@ export class Pinup {
             }
         })
 
-        this.websocket_list.forEach(ws => {
+        this.#websocket_list.forEach(ws => {
             server.on('upgrade', (request, socket, head) => {
                 const { pathname } = parse(request.url)
                 if (pathname == ws.path)
@@ -200,43 +198,20 @@ export class Pinup {
     }
 
     add_websocket(path: string = '/', callback: (wss: WebSocketServer) => void, port: number = null) {
-        const wss = new PinupWss(this.pinup_config?.websocket_config)
-        this.websocket_list.push(wss)
+        const wss = new PinupWss(this.#config?.ws_config)
+        this.#websocket_list.push(wss)
         wss.setup(path, port)
         callback(wss.wss)
         return wss.wss
     }
 
-    add_static_path_of_components(add_static_path: string = '', static_dir_path?: (item: path.ParsedPath) => string) {
-        this.component_paths.forEach(item => {
-            this.add_static_path(
-                path.join(
-                    path.relative('./', item), add_static_path
-                ), !static_dir_path ? null : static_dir_path(path.parse(item))
+    add_static_dirs() {
+        this.static_dirs.forEach((dir) => {
+            this.app.use(dir[0], express.static(path.resolve(dir[1]))
             )
         })
     }
-
-    add_static_path(files_path: string, static_dir?: string) {
-        this.app.use(
-            static_dir || this.pinup_config.static_path,
-            express.static(path.resolve(files_path))
-        )
-    }
 }
-
-
-/**
- * $path - transfer path to path's spectrum :)
- *
- * .normalize() -> transfer to single path
- *
- */
-
-// /path/to/endpoint
-// ./path/to/endpoint
-// path/to/endpoint
-// /path/to/endpoint/
 
 
 

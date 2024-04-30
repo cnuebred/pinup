@@ -1,8 +1,9 @@
 import { JwtPayload, verify } from 'jsonwebtoken'
 import { __provider__ } from './router'
-import { Controller, Pinpack, RequestMethod } from './d'
-import { one_or_many, PINS_METHODS } from './utils'
+import { Controller, CustomPinupController, MethodType, Pinpack, PinupControllerTypeEnum, RequestMethod } from './d'
+import { $path, one_or_many, PINS_METHODS } from './utils'
 import { reply } from './response'
+import path from 'path'
 
 export function pin (
     path: string,
@@ -146,4 +147,45 @@ export const auth = (error: boolean = true, jwt_secret?: string, data_source?: '
         }
         return replacement_method
     }
+}
+
+export abstract class PinupController {
+    #parent: PinupController | null = null
+    #children: PinupController[] = []
+    #path: string = '/'
+    static_dirs: string[][] = []
+    #type: PinupControllerTypeEnum = PinupControllerTypeEnum.DEFAULT
+    constructor() { }
+    methods: MethodType[]
+    
+    get parent(): PinupController { return this.#parent }
+
+    get type():PinupControllerTypeEnum { return this.#type }
+    set type(value:PinupControllerTypeEnum) { this.#type = value }
+
+    get path():string { return this.#path }
+    set path(value: string) { this.#path = $path(value).normalize() }
+    
+    get full_path(): string { 
+      if(this.parent)
+        return $path(this.parent.full_path).join(this.path) 
+
+      return this.path
+     }
+    get children(): PinupController[] { return this.#children }
+
+    abstract $init(): void
+
+    pin(child: CustomPinupController){
+        const child_module = new child()
+        child_module.#parent = this
+        this.#children.push(child_module)
+        return this
+    }
+
+    files(_path: string, dir: string = ''){
+        this.static_dirs.push([$path(this.full_path).join(dir), path.relative('./', _path)])
+    }
+
+    debug_show_statistic() {}
 }
