@@ -1,18 +1,79 @@
-import { ComponentType, ComponentTypeMethod } from './d';
-
 export const PINS_METHODS = ['get', 'post', 'delete', 'patch', 'put', 'option']
 
+export enum ColorCode {
+    RED,
+    GREEN,
+    YELLOW,
+    BLUE,
+    MAGENTA,
+    CYAN,
+    WHITE,
+    DEFAULT
+}
+
+/**
+ * Funkcja `one_or_many` umożliwia manipulację pojedynczym elementem, tablicą elementów lub wartością null, 
+ * dostarczając metody takie jak map, one, many, value_of, length, empty, oraz inspect.
+ * 
+ * @param {T | T[] | null} item - Element, tablica elementów lub null, które mają być przetwarzane.
+ * @returns {object} Obiekt zawierający metody do manipulacji i dostępu do wartości.
+ */
 export const one_or_many = <T>(item: T | T[] | null) => ({
+    /**
+     * Metoda `map` pozwala na przetworzenie wartości przechowywanej, stosując dostarczoną funkcję.
+     * 
+     * @param {(item: T[]) => T[]} fn - Funkcja, która zostanie zastosowana do przetworzenia elementów.
+     * @returns {object} Nowy obiekt one_or_many z przetworzonymi wartościami.
+     */
     map: (fn: (item: T[]) => T[]) => one_or_many(fn(one_or_many(item).value_of())),
+
+    /**
+     * Metoda `one` zwraca pierwszy element jako ciąg znaków. Jeśli elementy to ciągi, łączy je opcjonalnie zadanym separatorem.
+     * 
+     * @param {string} separator - Separator użyty do połączenia elementów, gdy są one ciągami znaków.
+     * @returns {string | T} Pierwszy element lub połączone ciągi znaków.
+     */
     one: (separator: string = '') => typeof one_or_many(item).value_of()[0] == 'string' ? one_or_many(item).value_of().join(separator) : item[0],
+
+    /**
+     * Metoda `many` zwraca tablicę wartości. Jeśli wartość jest pusta, może zwrócić tablicę z opcjonalnie dostarczonym elementem.
+     * 
+     * @param {T} other - Opcjonalny element do zwrócenia, gdy tablica jest pusta.
+     * @returns {T[]} Tablica z wartościami lub tablica z opcjonalnym elementem.
+     */
     many: (other?: T) => one_or_many(item).empty() ? one_or_many([other]).value_of() : one_or_many(item).value_of(),
+
+    /**
+     * Metoda `value_of` zwraca tablicę zawierającą elementy, niezależnie od ich początkowego formatu (pojedynczy element, tablica, lub null).
+     * 
+     * @returns {T[]} Tablica elementów.
+     */
     value_of: () => item ? (!Array.isArray(item) ? [item] : item) : [],
+
+    /**
+     * Metoda `length` zwraca liczbę elementów w tablicy.
+     * 
+     * @returns {number} Liczba elementów.
+     */
     length: () => one_or_many(item).value_of().length,
+
+    /**
+     * Metoda `empty` sprawdza, czy w tablicy nie ma elementów.
+     * 
+     * @returns {boolean} True, jeśli tablica jest pusta.
+     */
     empty: () => one_or_many(item).length() == 0,
+
+    /**
+     * Metoda `inspect` zapewnia reprezentację tekstową obiektu, co jest użyteczne dla debugowania.
+     * 
+     * @returns {string} Tekstowa reprezentacja obiektu.
+     */
     inspect: () => `OneOrMany(${item})`
 })
 
-export type OneOrMany<T> = ReturnType<typeof one_or_many<T>>
+
+export type OneOrMany<T> = ReturnType<typeof one_or_many>
 
 export const format = function (date: Date, time: string): string {
     const add_zero = (text: string, size: number = 2) => ('0'.repeat(size) + text).slice(-size)
@@ -28,105 +89,73 @@ export const format = function (date: Date, time: string): string {
 }
 
 /**
- * Creates a path object from the given segments.
- *
- * @param {string[]} path - Array of path segments to join.
+ * Funkcja `$path` pozwala na manipulowanie ścieżkami plików, oferując metody takie jak `normalize`, `split`, `join`, i `to_string`.
  * 
- * @returns {Object} An object with methods for working with paths.
- * 
- * Methods:
- * 
- *   .normalize():
- *     - Joins the provided segments into a single path.
- *     - Removes unnecessary slashes and relative path elements.
- *     - Ensures the resulting path begins with a leading slash ('/').
- *     - @returns {string} The normalized path as a single string.
- *     - Example:
- *       ```javascript
- *       const normalizedPath = $path('folder1', '../folder3/').normalize();
- *       console.log(normalizedPath); // Output: '/folder1/folder3'
- *       ```
- *
- *   .split():
- *     - Normalizes the path and splits it into segments.
- *     - Filters out empty segments.
- *     - @returns {string[]} An array of non-empty segments.
- *     - Example:
- *       ```javascript
- *       const segments = $path('/folder1/../folder3').split();
- *       console.log(segments); // Output: ['folder1', 'folder3']
- *       ```
- *
- *   .join(new_path, to_end = true):
- *     - Joins the current path with a new path.
- *     - If `to_end` is true, appends `new_path` to the current path.
- *     - If `to_end` is false, prepends `new_path` to the current path.
- *     - @param {string} new_path - The new path segment to join.
- *     - @param {boolean} [to_end=true] - Determines whether to append or prepend the new path.
- *     - @returns {string} The resulting combined path.
- *     - Example:
- *       ```javascript
- *       const joinedPath = $path('/folder1').join('folder2', true);
- *       console.log(joinedPath); // Output: '/folder1/folder2'
- *       ```
- *
- *   .to_string():
- *     - Converts the current path object to a raw string.
- *     - No normalization is applied.
- *     - @returns {string} The path as a raw string.
- *     - Example:
- *       ```javascript
- *       const rawPath = $path('folder1', 'folder2/').to_string();
- *       console.log(rawPath); // Output: 'folder1/folder2/'
- *       ```
- *
+ * @param {...string[]} path - Tablica zawierająca segmenty ścieżki, które zostaną przetworzone.
+ * @returns {object} Obiekt z metodami do manipulowania i dostępu do informacji o ścieżce.
  */
 export const $path = (...path: string[]) => ({
+    /**
+     * Metoda `normalize` służy do normalizacji ścieżki, usuwając niepotrzebne znaki i redukując wielokrotne slash'e do jednego.
+     * 
+     * @returns {string} Normalizowana ścieżka z jednym początkowym slashem i bez powtarzających się slashy.
+     */
     normalize: () => {
-        let path_mut = path.join('/')
-        if (!path_mut) return ''
+        let path_mut = path.join('/') // Łączy elementy tablicy path w jeden ciąg, rozdzielając je slash'em.
+        if (!path_mut) return '' // Jeżeli ścieżka jest pusta, zwraca pusty ciąg znaków.
+        // Usuwa wszystkie niepotrzebne slash'e na początku i końcu, oraz redukuje ścieżkę do niezbędnego formatu.
         path_mut = path_mut.replaceAll(/^(\.*\/*)(.+?)(\/*)$/gm, '$2')
-        path_mut = `/${path_mut}`
-        path_mut = path_mut.replaceAll(/\/{2,}/gm, '/')
+        path_mut = `/${path_mut}` // Dodaje jeden początkowy slash.
+        path_mut = path_mut.replaceAll(/\/{2,}/gm, '/') // Redukuje wszystkie powtórzenia slash'y do jednego.
         return path_mut
     },
+
+    /**
+     * Metoda `split` dzieli znormalizowaną ścieżkę na segmenty.
+     * 
+     * @returns {string[]} Tablica zawierająca segmenty ścieżki po podziale.
+     */
     split: () => $path(...path).normalize().split('/').filter(item => item != ''),
+
+    /**
+     * Metoda `join` pozwala na dodanie nowej ścieżki do istniejącej, z opcją dodania na koniec lub na początek.
+     * 
+     * @param {string} new_path - Nowa ścieżka do dodania.
+     * @param {boolean} to_end - Określa, czy nowa ścieżka powinna być dodana na końcu (domyślnie true).
+     * @returns {string} Znormalizowana i połączona ścieżka zgodnie z zadaną opcją.
+     */
     join: (new_path: string, to_end: boolean = true) =>
         to_end ? $path(...path).normalize() + $path(new_path).normalize() :
             $path(new_path).normalize() + $path(...path).normalize(),
 
+    /**
+     * Metoda `to_string` konwertuje oryginalne segmenty ścieżki na ciąg znaków, rozdzielając segmenty slash'em.
+     * 
+     * @returns {string} Ciąg znaków reprezentujący ścieżkę.
+     */
     to_string: () => path.join('/').toString()
 })
 
-export enum ColorCode {
-    RED,
-    GREEN,
-    YELLOW,
-    BLUE,
-    MAGENTA,
-    CYAN,
-    WHITE,
-    DEFAULT
-}
+
 
 export function colorCode(color?: ColorCode): string {
     switch (color) {
         case ColorCode.RED:
-            return '\x1b[31m'; // ANSI kod dla czerwonego
+            return '\x1b[31m';
         case ColorCode.GREEN:
-            return '\x1b[32m'; // ANSI kod dla zielonego
+            return '\x1b[32m';
         case ColorCode.YELLOW:
-            return '\x1b[33m'; // ANSI kod dla żółtego
+            return '\x1b[33m';
         case ColorCode.BLUE:
-            return '\x1b[34m'; // ANSI kod dla niebieskiego
+            return '\x1b[34m';
         case ColorCode.MAGENTA:
-            return '\x1b[35m'; // ANSI kod dla magenty
+            return '\x1b[35m';
         case ColorCode.CYAN:
-            return '\x1b[36m'; // ANSI kod dla cyjanu
+            return '\x1b[36m';
         case ColorCode.WHITE:
-            return '\x1b[37m'; // ANSI kod dla białego
+            return '\x1b[37m';
         default:
-            return '\x1b[39m'; // ANSI kod dla domyślnego koloru
+            return '\x1b[39m';
     }
 }
 

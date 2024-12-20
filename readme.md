@@ -1,4 +1,5 @@
- Pinup - Creating REST APIs Made Easy
+![ok](https://imgur.com/suyNnZg.png)
+
 
 Pinup - Creating REST APIs Made Easy
 ====================================
@@ -16,52 +17,99 @@ To get started with the Pinup library, you can install it using the npm package 
     npm install pinup
 
 
-Use also [**pinup-cli**](https://github.com/cnuebred/pinup-cli) to generate whole projects\
-**Instalation**:
-
-    npm install -g pinup-cli
-**Creating**:
-
-    pinup create <name> [options]
-
 Quick Start
 -----------
 
 Here's a simple example of using the Pinup library to create two API endpoints:
 ```typescript
-import express from 'express';
-import { Pinup, Pinpack, reply, pin, pins, need } from 'pinup'
+const app = express()
+const pinup = new Pinup(app, {
+    port: 3300,
+    auth: {
+        secret: 'Sekretny-Pierug-2137'
+    },
+    logger: true,
+    logger_file: './server.log'
+})
 
-const app = express();
-const pinup = new Pinup(app);
-
-@pin('dogs')
-export class DogController {
+export class Catto extends PinupController {
+    $init() {
+        this.path = 'catto'
+        this.debug_show_statistic()
+    }
     @pins.get()
-    getDogs({ op }: Pinpack) {
-        const dogs = ['Bulldog', 'Poodle', 'Labrador']
-        return op.pin.res(reply().data(dogs))
+    @need.query(['token'])
+    @auth()
+    get_list({ req, res, op }) {
+        return op.pin.res(reply('ok'))
     }
 
-    @pins.get(':id')
-    @need.params(['id'])
-    getDogById({ op }: Pinpack) {
-        const dogId = op.params.id
-        const dog = { id: dogId, breed: 'Bulldog' }
-        return op.pin.res(reply().data(dog))
+    @pins.post('new')
+    @need.params(['sector_id', 'name_secure'])
+    @need.body(['list_item'])
+    push_to_list() {
+        console.log('push_to_list')
     }
 }
 
-pinup.run();
+export class Doggo extends PinupController {
+    $init() {
+        this.path = 'doggo'
+        this.pin(Catto)
+        this.files(path.resolve('./'), 'assets')
+        this.debug_show_statistic()
+    }
+    @pins.get()
+    @need.query(['token'])
+    get_list({ rec, rep, op }: Pinpack) {
+        op.pin.log('Here is log about how to get list')
+        return op.pin.res(reply('ok'))
+    }
+
+    @pins.post('new')
+    @need.params(['sector_id', 'name_secure'])
+    @need.body(['list_item'])
+    push_to_list({ rec, rep, op }: Pinpack) {
+        console.log('push_to_list')
+        return op.pin.res(reply('ok'))
+    }
+}
+
+pinup.pin(Doggo)
+pinup.run({
+    print_setup_config: true
+})
 ```
+```bash
+Pinup build in 3ms
+Server is running on 3300
+Try to open http://localhost:3300
+Authentication JWT enabled with  ********************
+
+HTTP Endpoints
+┌─────────┬────────┬──────────────────┬────────────────┬───────────────────────┐
+│ (index) │ method │ component        │ name           │ path                  │
+├─────────┼────────┼──────────────────┼────────────────┼───────────────────────┤
+│ 0       │ 'get'  │ 'Doggo'          │ 'get_list'     │ '.../doggo'           │
+│ 1       │ 'post' │ 'Doggo'          │ 'push_to_list' │ '.../doggo/new'       │
+│ 2       │ 'get'  │ 'Catto <- Doggo' │ 'get_list'     │ '.../doggo/catto'     │
+│ 3       │ 'post' │ 'Catto <- Doggo' │ 'push_to_list' │ '.../doggo/catto/new' │
+└─────────┴────────┴──────────────────┴────────────────┴───────────────────────┘
+┌─────────┬────────────┬──────────────┬─────────────────┐
+│ (index) │ controller │ local static │ mapped endpoint │
+├─────────┼────────────┼──────────────┼─────────────────┤
+│ 0       │ 'Doggo'    │ './'         │ '/doggo/assets' │
+└─────────┴────────────┴──────────────┴─────────────────┘
+```
+
+
 Features
 --------
 
 ### Decorators
 
-*   `@pin('endpoint')`: Creates a new controller handling endpoints at the specified `endpoint`.
 *   `@pins.method('path')`: Decorator for HTTP methods (e.g., `@pins.get()`, `@pins.post('new')`) attaches handling functions to endpoints.
-*   `@need.param(['param1', 'param2'])`: Requires specific parameters in requests for further processing.
+*   `@need.param(['param1', 'param2'])`: Requires specific parameters in requests for further processing (eg. `@need.query('page_number')`, `@need.body('data_scheme')`).
 *   `@auth()`: Requires JWT authentication for accessing the endpoint.
 
 ### Class `Pinup`
@@ -69,8 +117,7 @@ Features
 The `Pinup` class is used for configuring and running the Express application.
 
 *   `new Pinup(app: express.Express, config?: PinupConfigType)`: Creates a Pinup instance.
-*   `setup()`: Configures endpoints and controller paths.
-*   `run(logger?: boolean)`: Launches the Express server.
+*   `run(print_setup_config?: boolean)`: Launches the Express server.
 
 ### Function `reply`
 
@@ -87,34 +134,7 @@ The `reply` Monad is responsible for creating and sending responses from endpoin
 
 Usage Example
 -------------
-```typescript
-import express from 'express';
-import { Pinup, Pinpack, reply, pin, pins, need } from 'pinup'
 
-const app = express();
-const pinup = new Pinup(app);
-
-@pin('items')
-export class ItemController {
-  @pins.get()
-	getItems({ op }: Pinpack) {
-		const items = ['item1', 'item2', 'item3']
-		return op.pin.res(reply().data(items))
-	}
-
-  @pins.get(':id')
-  @need.params(['id'])
-  getItemById({ op }: Pinpack) {
-  	const itemId = op.params.id
-  	const item = { id: itemId, name: 'Sample Item' }
-  	return op.pin.res(reply().data(item))
-  }
-}
-
-pinup.run();
-``` 
-
-In the above example, a controller handling endpoints '/items' and '/items/:id' is created. The `@pins.get()` and `@pins.get(':id')` decorators specify supported HTTP methods and paths.
 
 Contribution
 ------------

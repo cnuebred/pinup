@@ -51,7 +51,7 @@ export type MethodFunctionOptions = {
   self: ComponentTypeMethod
   pin: {
     res: (reply: Reply) => void
-    log: (message?: string) => void
+    log: (message: string, to_file?:boolean) => void
   }
   auth: AuthType
   params: book<string>
@@ -122,6 +122,7 @@ export type PinupConfigType = {
   port?: number
   static_path?: string,
   logger?: boolean,
+  logger_file?: string,
   ws_config?: PinupWsConfigType
   auth?: {
     secret?: string,
@@ -137,6 +138,9 @@ export type PinupWsConfigType = {
 
 }
 
+export type RunSetupConfig = {
+  print_setup_config:boolean
+}
 
 export enum PinupControllerTypeEnum {
   DEFAULT,

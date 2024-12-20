@@ -1,16 +1,18 @@
 import cors from 'cors'
 import express, { NextFunction, Request, Response } from 'express'
-import { lstatSync, readdirSync } from 'fs'
 import path from 'path'
 import { Reply, reply } from './response'
-import { MethodType, PinupConfigType, Controller, RequestMethod, MethodFunctionOptions, AuthType, ComponentTypeMethod, Pinpack, PinupWsConfigType } from './d'
-import { one_or_many, format, $path, colorize, ColorCode } from './utils'
+import { PinupConfigType, Controller, RequestMethod, AuthType, ComponentTypeMethod, Pinpack, PinupWsConfigType, RunSetupConfig } from './d'
+import { format, $path, colorize, ColorCode } from './utils'
 import { SignOptions, sign } from 'jsonwebtoken'
 
 // eslint-disable-next-line n/no-deprecated-api
 import { parse } from 'url';
-import { WebSocketServer } from 'ws';
+import { WebSocket, WebSocketServer, Server as WsServer } from 'ws';
 import { PinupController } from './controller'
+import { IncomingMessage, STATUS_CODES } from 'http'
+import { Server } from 'http'
+import { appendFile, appendFileSync } from 'fs'
 
 export const __provider__: Controller[] = []
 
@@ -21,31 +23,83 @@ const DEFAULT_PINUP_CONFIG: PinupConfigType = {
 }
 const DEFAULT_PINUPWS_CONFIG: PinupWsConfigType = {
     port: 3000,
-    request_logger: true
+    logger: true
 }
 
+//TODO!!!
 export class PinupWss {
-    pinupws_config: PinupWsConfigType
+    #servers: Map<string, WebSocketServer> = new Map();
+    #paths: Map<string, string[]> = new Map();
+    config: PinupWsConfigType
     path: string
     port: number
     wss: WebSocketServer
-    constructor(pinupws_config: PinupWsConfigType = {}) {
-        this.pinupws_config = { ...DEFAULT_PINUPWS_CONFIG, ...pinupws_config }
+    constructor(config: PinupWsConfigType = {}) {
+        this.config = { ...DEFAULT_PINUPWS_CONFIG, ...config }
     }
 
-    setup(path: string, port: number) {
-        this.path = path
-        this.port = port
-        this.wss = new WebSocketServer({ noServer: true });
+    add_server(name: string, config: PinupWsConfigType = {}): void {
+        if (this.#servers.has(name)) {
+            throw new Error(`Server with name ${name} already exists.`);
+        }
+        const server_config = { noServer: true, ...config };
+        const new_server = new WsServer(server_config);
+        this.#servers.set(name, new_server);
+        this.#paths.set(name, []);
     }
+    add_endpoint(server_name: string, path: string, handler: (ws: WebSocket, req: IncomingMessage) => void): void {
+        const server = this.#servers.get(server_name);
+        if (!server) {
+            throw new Error(`Server named ${server_name} does not exist.`);
+        }
+        this.#paths.get(server_name).push(path)
+        server.on('connection', (ws, req) => {
+            if (req.url === path) {
+                handler(ws, req);
+            }
+        });
+    }
+    remove_server(name: string): void {
+        if (!this.#servers.has(name)) {
+            throw new Error(`Server with name ${name} does not exist.`);
+        }
+        this.#servers.delete(name);
+    }
+    print_list_of_websocket(): void {
+        const table = []
+        this.#paths.forEach((paths, server) => {
+            paths.forEach(path => {
+                table.push({
+                    server: server,
+                    endpoint: path
+                })
+            })
+        })
+        if (table.length != 0) {
+            console.log(colorize('WebSocket Endpoints', ColorCode.BLUE))
+            console.table(table)
+        }
+    }
+    attach_to_http_server(httpServer: Server): void {
+        this.#servers.forEach((server, name) => {
+            httpServer.on('upgrade', (request, socket, head) => {
+                if (server.shouldHandle(request)) {
+                    server.handleUpgrade(request, socket, head, (ws) => {
+                        server.emit('connection', ws, request);
+                    });
+                }
+            });
+        });
+    }
+
 }
 
 export class Pinup {
     #controllers: PinupController[] = []
-    #websocket_list: PinupWss[] = []
     #config: PinupConfigType = {}
     static_dirs: string[][] = []
     app: express.Express
+    websocket: PinupWss = new PinupWss()
 
     constructor(app: express.Express, pinup_config: PinupConfigType = {}) {
         this.app = app
@@ -91,7 +145,7 @@ export class Pinup {
         return auth
     }
 
-    async setup() {
+    async #setup() {
         for (const module of this.#controllers) {
             const endpoint_callback = (req: Request, res: Response, next: NextFunction, item: ComponentTypeMethod) => {
                 const pin = this.pin_method_extensions(req, res, item)
@@ -105,12 +159,18 @@ export class Pinup {
                     next,
                     pin
                 }
+                const start = performance.now()
                 try {
-                    if (this.#config.logger)
-                        options.pin.log('LOG')
+                    const callback = item.action({ rec: req, rep: res, op: options } as Pinpack)
+                    const end = (performance.now() - start)
 
-                    return item.action({ rec: req, rep: res, op: options } as Pinpack)
+                    if (this.#config.logger)
+                        options.pin.log(`LOG +${end.toPrecision(3)}ms`, !!this.#config.logger_file)
+                    return callback
                 } catch (err) {
+                    const end = (performance.now() - start)
+                    if (this.#config.logger)
+                        options.pin.log(`LOG +${end.toPrecision(3)}ms`, !!this.#config.logger_file)
                     return options.pin.res(reply(`Pinup Error: ${err.message}`).error(true).status(500))
                 }
             }
@@ -130,38 +190,53 @@ export class Pinup {
                         (req: Request, res: Response, next: NextFunction) => endpoint_callback(req, res, next, parsed_method))
                 }
         }
+
     }
 
-    pin_method_extensions(req: Request, res: Response, item: ComponentTypeMethod) {
+    private pin_method_extensions(req: Request, res: Response, item: ComponentTypeMethod) {
         return {
             res: (reply: Reply) => { res.status(reply.value().status).json(reply.path(item.path).value()) },
-            log: (message?: string) => {
+            log: (message: string, to_file: boolean = false) => {
                 const date = new Date()
                 const date_format = format(date, '$D/$M/$Y|$h:$m:$s')
-                const method = item.method
-                const name = item.parent.constructor.name
-                const path = req.route.path
-                const auth = `(auth:${!!req.headers.authorization})`
-                const time_string = `[${colorize(date_format, ColorCode.YELLOW)}]`
-                const method_path_string = `{${colorize(method.toUpperCase(), ColorCode.GREEN)}, ${colorize(path, ColorCode.GREEN)}}`
-                const data_formats = Object.keys(item.data)
-                const log_localization = `[${colorize(name, ColorCode.CYAN)}.${colorize(item.name, ColorCode.MAGENTA)}, ${colorize(auth, ColorCode.RED)} ${data_formats}]`
-                const log = `${time_string} ${log_localization} ${method_path_string} ${!!message ? colorize(message, ColorCode.BLUE) : ''}`
+                const method = colorize(item.method.toUpperCase(), ColorCode.GREEN)
+                const parent_name = colorize(item.parent.constructor.name, ColorCode.CYAN)
+                const child_name = colorize(item.name, ColorCode.MAGENTA)
+                const path = colorize(req.route.path, ColorCode.GREEN)
+                const auth = !!req.headers.authorization ? 'auth' : ''
+                const time_string = `[${colorize(date_format, ColorCode.YELLOW)}]\t`
+                const data_formats = auth + Object.keys(item.data)
+                const log_localization = `${parent_name}.${child_name}\t`
+                const method_path_string = `{${method} - ${data_formats}, ${path}}\t`
+                const log = `${time_string} ${log_localization} ${method_path_string} ${colorize(message, ColorCode.BLUE)}`
+
+                if (to_file && this.#config.logger_file) {
+                    appendFile(this.#config.logger_file,
+                        log.replaceAll(/[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/g, '') + '\n',
+                        (err) => {
+                            if (err) throw err;
+                        })
+                }
+
                 console.log(log)
                 return log
             }
         }
     }
 
-    async run(logger: boolean = true): Promise<void> {
+
+    async run(config: RunSetupConfig): Promise<void> {
         const start_time = performance.now()
-        await this.setup()
+        await this.#setup()
         const server = this.app.listen(this.#config.port, () => {
-            console.log(`Server build in ${Math.ceil((performance.now() - start_time)) / 1000}s`)
-            console.log(`Server is running on ${this.#config.port}`)
-            console.log(`Authentication JWT ${this.#config?.auth?.secret ? 'enabled with' : 'disable'}  ${'*'.repeat(this.#config?.auth?.secret?.length || 0)}`)
-            if (logger) {
+            console.log(`Pinup build in ${colorize(Math.ceil((performance.now() - start_time)).toString() + 'ms', ColorCode.GREEN)}`)
+            console.log(`Server is running on ${colorize(this.#config.port.toString(), ColorCode.GREEN)}`)
+            console.log(`Try to open ${colorize('http://localhost:' + this.#config.port.toString(), ColorCode.CYAN)}`)
+            console.log(`Authentication JWT ${this.#config?.auth?.secret ? 'enabled with' : 'disable'}  ${colorize('*'.repeat(this.#config?.auth?.secret?.length || 0), ColorCode.RED)}`)
+            console.log()
+            if (config.print_setup_config) {
                 const methods = []
+                const static_dirs = []
                 const parent_name = (parent: Controller) => {
                     const names = []
                     while (parent?.constructor.name) {
@@ -171,39 +246,57 @@ export class Pinup {
                     return names
                 }
                 this.#controllers.forEach(item => {
+                    for (const paths of item.static_dirs) {
+                        static_dirs.push({
+                            controller: item.constructor.name,
+                            'local static': './' + paths[1],
+                            'mapped endpoint': paths[0]
+                        })
+                    }
+
                     for (const method of item.methods) {
                         methods.push({
                             method: method.method,
-                            component: parent_name(method.parent).join('<-'),
+                            component: parent_name(method.parent).slice(0, 4).join(' <- '),
                             name: method.name,
-                            path: '...' + $path(method.parent.full_path, ...method.path).normalize().slice(-70)
+                            path: '...' + $path(method.parent.full_path, ...method.path).normalize().slice(-70),
                         })
                     }
                 })
-                console.table(methods)
+                if (methods.length != 0) {
+                    console.log(colorize('HTTP Endpoints', ColorCode.BLUE))
+                    console.table(methods)
+                }
+                if (static_dirs.length != 0) {
+                    console.log(colorize('Static Endpoints', ColorCode.BLUE))
+                    console.table(static_dirs)
+                }
+                console.log()
+                this.websocket.print_list_of_websocket()
             }
         })
 
-        this.#websocket_list.forEach(ws => {
-            server.on('upgrade', (request, socket, head) => {
-                const { pathname } = parse(request.url)
-                if (pathname == ws.path)
-                    ws.wss.handleUpgrade(request, socket, head, socket => {
-                        ws.wss.emit('connection', request, socket)
-                    })
-                else
-                    socket.destroy()
-            })
-        })
+        this.websocket.attach_to_http_server(server)
+        // this.#websocket_list.forEach(ws => {
+        //     server.on('upgrade', (request, socket, head) => {
+        //         const { pathname } = parse(request.url)
+        //         if (pathname == ws.path)
+        //             ws.wss.handleUpgrade(request, socket, head, socket => {
+        //                 ws.wss.emit('connection', request, socket)
+        //             })
+        //         else
+        //             socket.destroy()
+        //     })
+        // })
     }
 
-    add_websocket(path: string = '/', callback: (wss: WebSocketServer) => void, port: number = null) {
-        const wss = new PinupWss(this.#config?.ws_config)
-        this.#websocket_list.push(wss)
-        wss.setup(path, port)
-        callback(wss.wss)
-        return wss.wss
-    }
+    // add_websocket(path: string = '/', callback?: (wss: WebSocketServer) => void, port: number = null) {
+    //     const wss = new PinupWss(this.#config?.ws_config)
+    //     this.#websocket_list.push(wss)
+    //     wss.setup(path, port)
+    //     callback(wss.wss)
+    //     return wss.wss
+    // }
 
     add_static_dirs() {
         this.static_dirs.forEach((dir) => {

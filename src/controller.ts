@@ -5,7 +5,8 @@ import { $path, one_or_many, PINS_METHODS } from './utils'
 import { reply } from './response'
 import path from 'path'
 
-export function pin (
+
+export function pin(
     path: string,
     ParentClass?: (new (...args: any[]) => any)
 ): any {
@@ -14,7 +15,7 @@ export function pin (
         throw new Error(`Parent class '${ParentClass.name}' is not assignable to parameter of Controller class`)
 
     return function <T extends Controller>
-    (OriginalMethod: T, context: ClassDecoratorContext): Controller {
+        (OriginalMethod: T, context: ClassDecoratorContext): Controller {
         const om = new OriginalMethod()
 
         const SubController: Controller = class extends OriginalMethod {
@@ -37,7 +38,7 @@ const pins_wrapper = (method: RequestMethod, path: string | string[]) => {
 
 const request_method_wrapper = (request_method: RequestMethod, paths: string[]): any => {
     return function (original_method: any, context: ClassMethodDecoratorContext<Controller>) {
-        function replacement_method ({ rec, rep, op }: Pinpack) {
+        function replacement_method({ rec, rep, op }: Pinpack) {
             const context = original_method.bind(this)
             context({ rec, rep, op })
         }
@@ -51,7 +52,7 @@ const request_method_wrapper = (request_method: RequestMethod, paths: string[]):
                     path: one_or_many(path).many(''),
                     parent: this,
                     foo: replacement_method,
-                    data: { ...this.data } || {}
+                    data: { ...this.data }
                 })
             })
             this.data = {}
@@ -68,21 +69,22 @@ export const pins = Object.fromEntries(PINS_METHODS.map((item: RequestMethod) =>
 
 const data_method_wrapper = (name_dataset: 'params' | 'query' | 'body' | 'headers', keys: string[]): any => {
     return (original_method: any, context: ClassMethodDecoratorContext<Controller>) => {
-        function replacement_method ({ rec, rep, op }: Pinpack) {
+        function replacement_method({ rec, rep, op }: Pinpack) {
             const req_dataset = rec[name_dataset]
             const require = []
-            const dataset = keys.map(item => {
+            let dataset = keys.map(item => {
                 return [item, req_dataset[item.startsWith('?') ? item.slice(1) : item]]
             }).filter(([key, value]) => {
-                if(key.startsWith('?'))
+                if (key.startsWith('?')){
                     return true
+                }
                 if (!value) {
                     require.push(key)
                     return false
                 }
                 return true
             })
-
+            
             if (require.length !== 0) {
                 return op.pin.res(
                     reply(`This endpoint require '${name_dataset}' with specific properties: ${require.join(', ')}`)
@@ -90,7 +92,9 @@ const data_method_wrapper = (name_dataset: 'params' | 'query' | 'body' | 'header
                         .error(true)
                 )
             }
-
+            dataset = dataset.map(([key, value]) => {
+                return [key.startsWith('?') ? key.slice(1) : key, value]
+            })
             op[name_dataset] = { ...op[name_dataset], ...Object.fromEntries(dataset) }
             const context = original_method.bind(this)
             context({ rec, rep, op })
@@ -113,7 +117,7 @@ export const need = {
 
 export const auth = (error: boolean = true, jwt_secret?: string, data_source?: 'params' | 'query' | 'body' | 'headers', data_name?: string): any => {
     return function (original_method: any, context: ClassMethodDecoratorContext<Controller>) {
-        function replacement_method ({ rec, rep, op }: Pinpack) {
+        function replacement_method({ rec, rep, op }: Pinpack) {
             data_source = data_source || 'headers'
             data_name = data_name || 'authorization'
 
@@ -157,35 +161,35 @@ export abstract class PinupController {
     #type: PinupControllerTypeEnum = PinupControllerTypeEnum.DEFAULT
     constructor() { }
     methods: MethodType[]
-    
+
     get parent(): PinupController { return this.#parent }
 
-    get type():PinupControllerTypeEnum { return this.#type }
-    set type(value:PinupControllerTypeEnum) { this.#type = value }
+    get type(): PinupControllerTypeEnum { return this.#type }
+    set type(value: PinupControllerTypeEnum) { this.#type = value }
 
-    get path():string { return this.#path }
+    get path(): string { return this.#path }
     set path(value: string) { this.#path = $path(value).normalize() }
-    
-    get full_path(): string { 
-      if(this.parent)
-        return $path(this.parent.full_path).join(this.path) 
 
-      return this.path
-     }
+    get full_path(): string {
+        if (this.parent)
+            return $path(this.parent.full_path).join(this.path)
+
+        return this.path
+    }
     get children(): PinupController[] { return this.#children }
 
     abstract $init(): void
 
-    pin(child: CustomPinupController){
+    pin(child: CustomPinupController) {
         const child_module = new child()
         child_module.#parent = this
         this.#children.push(child_module)
         return this
     }
 
-    files(_path: string, dir: string = ''){
+    files(_path: string, dir: string = '') {
         this.static_dirs.push([$path(this.full_path).join(dir), path.relative('./', _path)])
     }
 
-    debug_show_statistic() {}
+    debug_show_statistic() { }
 }
