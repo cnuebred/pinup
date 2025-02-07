@@ -198,7 +198,7 @@ export class Pinup {
             res: (reply: Reply) => { res.status(reply.value().status).json(reply.path(item.path).value()) },
             log: (message: string, to_file: boolean = false) => {
                 const date = new Date()
-                const date_format = format(date, '$D/$M/$Y|$h:$m:$s')
+                const date_format = format(date, '$D.$M.$Y|$h:$m:$s')
                 const method = colorize(item.method.toUpperCase(), ColorCode.GREEN)
                 const parent_name = colorize(item.parent.constructor.name, ColorCode.CYAN)
                 const child_name = colorize(item.name, ColorCode.MAGENTA)
