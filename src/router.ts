@@ -161,7 +161,7 @@ export class Pinup {
                 }
                 const start = performance.now()
                 try {
-                    const callback = item.action({ rec: req, rep: res, op: options } as Pinpack)
+                    const callback = item.action({ rec: req, rep: res, options: options } as Pinpack)
                     const end = (performance.now() - start)
 
                     if (this.#config.logger)

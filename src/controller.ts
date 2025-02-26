@@ -38,7 +38,7 @@ const pins_wrapper = (method: RequestMethod, path: string | string[]) => {
 
 const request_method_wrapper = (request_method: RequestMethod, paths: string[]): any => {
     return function (original_method: any, context: ClassMethodDecoratorContext<Controller>) {
-        function replacement_method({ rec, rep, op }: Pinpack) {
+        function replacement_method({ rec, rep, options: op }: Pinpack) {
             const context = original_method.bind(this)
             context({ rec, rep, op })
         }
@@ -69,7 +69,7 @@ export const pins = Object.fromEntries(PINS_METHODS.map((item: RequestMethod) =>
 
 const data_method_wrapper = (name_dataset: 'params' | 'query' | 'body' | 'headers', keys: string[]): any => {
     return (original_method: any, context: ClassMethodDecoratorContext<Controller>) => {
-        function replacement_method({ rec, rep, op }: Pinpack) {
+        function replacement_method({ rec, rep, options: op }: Pinpack) {
             const req_dataset = rec[name_dataset]
             const require = []
             let dataset = keys.map(item => {
@@ -117,7 +117,7 @@ export const need = {
 
 export const auth = (error: boolean = true, jwt_secret?: string, data_source?: 'params' | 'query' | 'body' | 'headers', data_name?: string): any => {
     return function (original_method: any, context: ClassMethodDecoratorContext<Controller>) {
-        function replacement_method({ rec, rep, op }: Pinpack) {
+        function replacement_method({ rec, rep, options: op }: Pinpack) {
             data_source = data_source || 'headers'
             data_name = data_name || 'authorization'
 
