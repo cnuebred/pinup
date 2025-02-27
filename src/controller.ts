@@ -1,10 +1,12 @@
-import { verify } from 'jsonwebtoken'
+import { JwtPayload, verify } from 'jsonwebtoken'
 import { __provider__ } from './router'
-import { Controller, Pinpack, RequestMethod } from './d'
-import { one_or_many, PINS_METHODS } from './utils'
+import { Controller, CustomPinupController, MethodType, Pinpack, PinupControllerTypeEnum, RequestMethod } from './d'
+import { $path, one_or_many, PINS_METHODS } from './utils'
 import { reply } from './response'
+import path from 'path'
 
-export function pin (
+
+export function pin(
     path: string,
     ParentClass?: (new (...args: any[]) => any)
 ): any {
@@ -13,13 +15,17 @@ export function pin (
         throw new Error(`Parent class '${ParentClass.name}' is not assignable to parameter of Controller class`)
 
     return function <T extends Controller>
-    (original_method: T, context: ClassDecoratorContext): Controller {
-        const SubController: Controller = class extends original_method {
+        (OriginalMethod: T, context: ClassDecoratorContext): Controller {
+        const om = new OriginalMethod()
+
+        const SubController: Controller = class extends OriginalMethod {
             name = context.name
             private_controller_key = true
             path = path
+            initializer = om.__init__
             full_path = [...parent?.full_path || '', path]
-            parent = ParentClass
+            parent_name = parent?.name
+            parent = parent
         }
         __provider__.push(new SubController())
         return SubController
@@ -31,14 +37,13 @@ const pins_wrapper = (method: RequestMethod, path: string | string[]) => {
 }
 const request_method_wrapper = (request_method: RequestMethod, paths: string[]): any => {
     return function (original_method: any, context: ClassMethodDecoratorContext<Controller>) {
-        function replacement_method ({ rec, rep, op }: Pinpack) {
-            op.pin.log()
+        function replacement_method({ rec, rep, options: op }: Pinpack) {
             const context = original_method.bind(this)
             context({ rec, rep, op })
         }
-
         context.addInitializer(function () {
             if (!this.methods) this.methods = []
+
             paths.forEach(path => {
                 this.methods.push({
                     method: request_method,
@@ -46,7 +51,7 @@ const request_method_wrapper = (request_method: RequestMethod, paths: string[]):
                     path: one_or_many(path).many(''),
                     parent: this,
                     foo: replacement_method,
-                    data: { ...this.data } || {}
+                    data: { ...this.data }
                 })
             })
             this.data = {}
@@ -63,26 +68,32 @@ export const pins = Object.fromEntries(PINS_METHODS.map((item: RequestMethod) =>
 
 const data_method_wrapper = (name_dataset: 'params' | 'query' | 'body' | 'headers', keys: string[]): any => {
     return (original_method: any, context: ClassMethodDecoratorContext<Controller>) => {
-        function replacement_method ({ rec, rep, op }: Pinpack) {
+        function replacement_method({ rec, rep, options: op }: Pinpack) {
             const req_dataset = rec[name_dataset]
             const require = []
-            const dataset = keys.map(item => {
-                return [item, req_dataset[item]]
+            let dataset = keys.map(item => {
+                return [item, req_dataset[item.startsWith('?') ? item.slice(1) : item]]
             }).filter(([key, value]) => {
+                if (key.startsWith('?')){
+                    return true
+                }
                 if (!value) {
                     require.push(key)
                     return false
                 }
                 return true
             })
-
+            
             if (require.length !== 0) {
                 return op.pin.res(
                     reply(`This endpoint require '${name_dataset}' with specific properties: ${require.join(', ')}`)
+                        .status(400)
                         .error(true)
                 )
             }
-
+            dataset = dataset.map(([key, value]) => {
+                return [key.startsWith('?') ? key.slice(1) : key, value]
+            })
             op[name_dataset] = { ...op[name_dataset], ...Object.fromEntries(dataset) }
             const context = original_method.bind(this)
             context({ rec, rep, op })
@@ -103,20 +114,26 @@ export const need = {
     headers: (keys: string[]): any => data_method_wrapper('headers', keys)
 }
 
-export const auth = (error: boolean = true, jwt_secret?: string): any => {
+export const auth = (error: boolean = true, jwt_secret?: string, data_source?: 'params' | 'query' | 'body' | 'headers', data_name?: string): any => {
     return function (original_method: any, context: ClassMethodDecoratorContext<Controller>) {
-        function replacement_method ({ rec, rep, op }: Pinpack) {
-            if (!rec.headers.authorization)
+        function replacement_method({ rec, rep, options: op }: Pinpack) {
+            data_source = data_source || 'headers'
+            data_name = data_name || 'authorization'
+
+            const auth_data = rec[data_source]?.[data_name]
+            if (!auth_data && error)
                 return op.pin.res(
                     reply('This endpoint require \'header\' with specific properties: authorization')
+                        .status(400)
                         .error(true)
                 )
             // eslint-disable-next-line no-unused-vars
-            const [prefix, token] = rec.headers.authorization.split(' ')
+            const auth = op.auth
             try {
-                const payload = verify(token, jwt_secret || op.auth.secret)
-                op.auth.payload = payload
-                op.auth.passed = true
+                const [prefix, token] = auth_data.split(' ')
+                const payload = verify(token, jwt_secret || auth.secret)
+                auth.payload = payload as JwtPayload
+                auth.passed = true
             } catch (err) {
                 if (error) {
                     return op.pin.res(reply(`${err.message} [${err.name}]`)
@@ -124,13 +141,54 @@ export const auth = (error: boolean = true, jwt_secret?: string): any => {
                         .status(401)
                         .data({ error_code: err.name }))
                 } else {
-                    op.auth.payload = null
-                    op.auth.passed = false
+                    auth.payload = null
+                    auth.passed = false
                 }
             }
             const context = original_method.bind(this)
-            context({ rec, rep, options: op })
+            context({ rec, rep, op })
         }
         return replacement_method
     }
+}
+
+export abstract class PinupController {
+    #parent: PinupController | null = null
+    #children: PinupController[] = []
+    #path: string = '/'
+    static_dirs: string[][] = []
+    #type: PinupControllerTypeEnum = PinupControllerTypeEnum.DEFAULT
+    constructor() { }
+    methods: MethodType[]
+
+    get parent(): PinupController { return this.#parent }
+
+    get type(): PinupControllerTypeEnum { return this.#type }
+    set type(value: PinupControllerTypeEnum) { this.#type = value }
+
+    get path(): string { return this.#path }
+    set path(value: string) { this.#path = $path(value).normalize() }
+
+    get full_path(): string {
+        if (this.parent)
+            return $path(this.parent.full_path).join(this.path)
+
+        return this.path
+    }
+    get children(): PinupController[] { return this.#children }
+
+    abstract $init(): void
+
+    pin(child: CustomPinupController) {
+        const child_module = new child()
+        child_module.#parent = this
+        this.#children.push(child_module)
+        return this
+    }
+
+    files(_path: string, dir: string = '') {
+        this.static_dirs.push([$path(this.full_path).join(dir), path.relative('./', _path)])
+    }
+
+    debug_show_statistic() { }
 }

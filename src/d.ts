@@ -1,9 +1,10 @@
 /* eslint-disable no-unused-vars */
 /* eslint-disable no-use-before-define */
-import { NextFunction, Request, Response } from 'express'
+import express, { NextFunction, Request, Response } from 'express'
 import { JwtPayload, SignOptions } from 'jsonwebtoken'
 import { Reply } from './response'
-import { OneOrMany, PinComponent } from './utils'
+import { $path, OneOrMany } from './utils'
+import { PinupController } from './controller'
 
 declare global {
   export interface Date {
@@ -13,19 +14,19 @@ declare global {
 export type Pinpack = {
   rec: Request
   rep: Response,
-  op: MethodFunctionOptions
+  options: MethodFunctionOptions
 }
 
 export type ComponentTypeMethod = {
   name: string,
-  endpoint: OneOrMany<string>,
-  path: OneOrMany<string>,
+  endpoint: string,
+  path: string,
   method: RequestMethod
-  parent: Controller
-  foo: ({ rec, rep, op }: Pinpack) => any,
+  parent: PinupController
+  action: ({ rec, rep, options }: Pinpack) => any,
   data: {
-      // eslint-disable-next-line no-unused-vars
-      [index in RequestData]?: string[]
+    // eslint-disable-next-line no-unused-vars
+    [index in RequestData]?: string[]
   }
 }
 
@@ -41,7 +42,7 @@ export type AuthType = {
   secret?: string
   expires_in?: string | number | undefined
   passed?: boolean,
-  payload?: string | JwtPayload | null
+  payload?: JwtPayload | null
   sign: (payload: string | object | Buffer, secretOrPrivateKey?: null, options?: SignOptions & { algorithm: 'none' }) => string
 
 }
@@ -49,14 +50,8 @@ export type MethodFunctionOptions = {
   next: NextFunction
   self: ComponentTypeMethod
   pin: {
-    res: (reply:Reply) => void
-    module: (name: string) => PinComponent
-    log: () => void
-    redirect: (
-      name: string,
-      query?: { [index: string]: string },
-      params?: { [index: string]: string }
-    ) => void
+    res: (reply: Reply) => void
+    log: (message: string, to_file?:boolean) => void
   }
   auth: AuthType
   params: book<string>
@@ -69,10 +64,12 @@ export type Controller = { new(...args: any[]) } & PinupType
 export type PinupType = {
   name: string
   path: string
-  full_path: string[]
+  initializer: (app: express.Express) => void
+  full_path: string
   data: {
     [K in RequestData]?: string[]
   }
+  parent_name: string
   parent?: Controller
   methods: MethodType[]
 }
@@ -85,7 +82,7 @@ export type MethodType = {
   name: string,
   parent: Controller
   path: string[],
-  foo: ({ rec, rep, op }: Pinpack) => void
+  foo: ({ rec, rep, options }: Pinpack) => void
 }
 
 export type RequestMethod = 'get' | 'post' | 'patch' | 'delete' | 'put' | 'option'
@@ -123,17 +120,35 @@ export type ProviderType = {
 
 export type PinupConfigType = {
   port?: number
-  provider_dir?: string | string[]
-  ignore_dirs?: string[]
-  responses?: string | string[]
-  request_logger?: boolean
+  static_path?: string,
+  logger?: boolean,
+  logger_file?: string,
+  ws_config?: PinupWsConfigType
   auth?: {
     secret?: string,
     expires_in?: string
   }
-  logger?: (port) => string
 }
 
 export type PinupOptionsType = {
   auth?: AuthType
 }
+
+export type PinupWsConfigType = {
+
+}
+
+export type RunSetupConfig = {
+  print_setup_config:boolean
+}
+
+export enum PinupControllerTypeEnum {
+  DEFAULT,
+  CUSTOM,
+  VIEW,
+  LOGIN,
+  RESOLVER
+}
+
+export type CustomPinupController = new (...args: any[]) => PinupController
+
