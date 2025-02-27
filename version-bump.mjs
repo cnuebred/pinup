@@ -11,14 +11,15 @@ const bump = () => {
 
   let { major, minor, build } = separate_to_semantic_version_parts(version)
   const type = process.argv[2]
-  if (type.toLowerCase() == 'major')
+  if (type?.toLowerCase() == 'major')
     major++
-  else if (type.toLowerCase() == 'minor')
+  else if (type?.toLowerCase() == 'minor')
     minor++
   else
     build++
  
   pkg.version = `${major}.${minor}.${build}`
+  console.log(`NEW VERSION: ${pkg.version}`)
   writeFileSync("package.json", JSON.stringify(pkg, null, "\t"));
 }
 
