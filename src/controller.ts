@@ -35,7 +35,6 @@ export function pin(
 const pins_wrapper = (method: RequestMethod, path: string | string[]) => {
     return request_method_wrapper(method, one_or_many(path).many(''))
 }
-
 const request_method_wrapper = (request_method: RequestMethod, paths: string[]): any => {
     return function (original_method: any, context: ClassMethodDecoratorContext<Controller>) {
         function replacement_method({ rec, rep, options: op }: Pinpack) {
