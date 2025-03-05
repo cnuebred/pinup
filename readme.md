@@ -40,8 +40,8 @@ export class Catto extends PinupController {
     @pins.get()
     @need.query(['token'])
     @auth()
-    get_list({ req, res, op }) {
-        return op.pin.res(reply('ok'))
+    get_list({ req, res, options }) {
+        return options.pin.res(reply('ok'))
     }
 
     @pins.post('new')
@@ -61,17 +61,17 @@ export class Doggo extends PinupController {
     }
     @pins.get()
     @need.query(['token'])
-    get_list({ rec, rep, op }: Pinpack) {
-        op.pin.log('Here is log about how to get list')
-        return op.pin.res(reply('ok'))
+    get_list({ rec, rep, options }: Pinpack) {
+        options.pin.log('Here is log about how to get list')
+        return options.pin.res(reply('ok'))
     }
 
     @pins.post('new')
     @need.params(['sector_id', 'name_secure'])
     @need.body(['list_item'])
-    push_to_list({ rec, rep, op }: Pinpack) {
+    push_to_list({ rec, rep, options }: Pinpack) {
         console.log('push_to_list')
-        return op.pin.res(reply('ok'))
+        return options.pin.res(reply('ok'))
     }
 }
 
