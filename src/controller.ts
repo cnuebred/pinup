@@ -37,9 +37,9 @@ const pins_wrapper = (method: RequestMethod, path: string | string[]) => {
 }
 const request_method_wrapper = (request_method: RequestMethod, paths: string[]): any => {
     return function (original_method: any, context: ClassMethodDecoratorContext<Controller>) {
-        function replacement_method({ rec, rep, options: op }: Pinpack) {
+        function replacement_method({ rec, rep, options }: Pinpack) {
             const context = original_method.bind(this)
-            context({ rec, rep, op })
+            context({ rec, rep, options })
         }
         context.addInitializer(function () {
             if (!this.methods) this.methods = []
@@ -68,7 +68,7 @@ export const pins = Object.fromEntries(PINS_METHODS.map((item: RequestMethod) =>
 
 const data_method_wrapper = (name_dataset: 'params' | 'query' | 'body' | 'headers', keys: string[]): any => {
     return (original_method: any, context: ClassMethodDecoratorContext<Controller>) => {
-        function replacement_method({ rec, rep, options: op }: Pinpack) {
+        function replacement_method({ rec, rep, options }: Pinpack) {
             const req_dataset = rec[name_dataset]
             const require = []
             let dataset = keys.map(item => {
@@ -85,7 +85,7 @@ const data_method_wrapper = (name_dataset: 'params' | 'query' | 'body' | 'header
             })
             
             if (require.length !== 0) {
-                return op.pin.res(
+                return options.pin.res(
                     reply(`This endpoint require '${name_dataset}' with specific properties: ${require.join(', ')}`)
                         .status(400)
                         .error(true)
@@ -94,9 +94,9 @@ const data_method_wrapper = (name_dataset: 'params' | 'query' | 'body' | 'header
             dataset = dataset.map(([key, value]) => {
                 return [key.startsWith('?') ? key.slice(1) : key, value]
             })
-            op[name_dataset] = { ...op[name_dataset], ...Object.fromEntries(dataset) }
+            options[name_dataset] = { ...options[name_dataset], ...Object.fromEntries(dataset) }
             const context = original_method.bind(this)
-            context({ rec, rep, op })
+            context({ rec, rep, options })
         }
         context.addInitializer(function () {
             if (!this.data) this.data = {}
@@ -114,21 +114,25 @@ export const need = {
     headers: (keys: string[]): any => data_method_wrapper('headers', keys)
 }
 
-export const auth = (error: boolean = true, jwt_secret?: string, data_source?: 'params' | 'query' | 'body' | 'headers', data_name?: string): any => {
+export const auth = (
+    error: boolean = true, 
+    jwt_secret?: string, 
+    data_source?: 'params' | 'query' | 'body' | 'headers', 
+    data_name?: string): any => {
     return function (original_method: any, context: ClassMethodDecoratorContext<Controller>) {
-        function replacement_method({ rec, rep, options: op }: Pinpack) {
+        function replacement_method({ rec, rep, options }: Pinpack) {
             data_source = data_source || 'headers'
             data_name = data_name || 'authorization'
 
             const auth_data = rec[data_source]?.[data_name]
             if (!auth_data && error)
-                return op.pin.res(
+                return options.pin.res(
                     reply('This endpoint require \'header\' with specific properties: authorization')
                         .status(400)
                         .error(true)
                 )
             // eslint-disable-next-line no-unused-vars
-            const auth = op.auth
+            const auth = options.auth
             try {
                 const [prefix, token] = auth_data.split(' ')
                 const payload = verify(token, jwt_secret || auth.secret)
@@ -136,7 +140,7 @@ export const auth = (error: boolean = true, jwt_secret?: string, data_source?: '
                 auth.passed = true
             } catch (err) {
                 if (error) {
-                    return op.pin.res(reply(`${err.message} [${err.name}]`)
+                    return options.pin.res(reply(`${err.message} [${err.name}]`)
                         .error(true)
                         .status(401)
                         .data({ error_code: err.name }))
@@ -146,7 +150,7 @@ export const auth = (error: boolean = true, jwt_secret?: string, data_source?: '
                 }
             }
             const context = original_method.bind(this)
-            context({ rec, rep, op })
+            context({ rec, rep, options })
         }
         return replacement_method
     }
