@@ -1,6 +1,6 @@
 import { JwtPayload, verify } from 'jsonwebtoken'
 import { __provider__ } from './router'
-import { Controller, CustomPinupController, MethodType, Pinpack, PinupControllerTypeEnum, RequestMethod } from './d'
+import { AuthDecoratorArgType, Controller, CustomPinupController, MethodType, Pinpack, PinupControllerTypeEnum, RequestMethod } from './d'
 import { $path, one_or_many, PINS_METHODS } from './utils'
 import { reply } from './response'
 import path from 'path'
@@ -114,20 +114,18 @@ export const need = {
     headers: (keys: string[]): any => data_method_wrapper('headers', keys)
 }
 
-export const auth = (
-    error: boolean = true, 
-    jwt_secret?: string, 
-    data_source?: 'params' | 'query' | 'body' | 'headers', 
-    data_name?: string): any => {
+
+
+export const auth = (auth_options?: AuthDecoratorArgType): any => {
     return function (original_method: any, context: ClassMethodDecoratorContext<Controller>) {
         function replacement_method({ rec, rep, options }: Pinpack) {
-            data_source = data_source || 'headers'
-            data_name = data_name || 'authorization'
+            auth_options.data_source = auth_options.data_source || 'headers'
+            auth_options.data_name = auth_options.data_name || 'authorization'
 
-            const auth_data = rec[data_source]?.[data_name]
-            if (!auth_data && error)
+            const auth_data = rec[auth_options.data_source]?.[auth_options.data_name]
+            if (!auth_data && auth_options.should_end_with_error)
                 return options.pin.res(
-                    reply('This endpoint require \'header\' with specific properties: authorization')
+                    reply(`This endpoint require \'${auth_options.data_source}\' with specific properties: authorization`)
                         .status(400)
                         .error(true)
                 )
@@ -135,11 +133,11 @@ export const auth = (
             const auth = options.auth
             try {
                 const [prefix, token] = auth_data.split(' ')
-                const payload = verify(token, jwt_secret || auth.secret)
+                const payload = verify(token, auth_options.jwt_secret || auth.secret)
                 auth.payload = payload as JwtPayload
                 auth.passed = true
             } catch (err) {
-                if (error) {
+                if (auth_options.should_end_with_error) {
                     return options.pin.res(reply(`${err.message} [${err.name}]`)
                         .error(true)
                         .status(401)

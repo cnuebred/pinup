@@ -152,3 +152,9 @@ export enum PinupControllerTypeEnum {
 
 export type CustomPinupController = new (...args: any[]) => PinupController
 
+export type AuthDecoratorArgType = {
+  should_end_with_error?: boolean, 
+  jwt_secret?: string, 
+  data_source?: 'params' | 'query' | 'body' | 'headers', 
+  data_name?: string
+}
