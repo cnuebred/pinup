@@ -40,6 +40,7 @@ export type ComponentType = {
 type book<T> = { [index: string]: T }
 export type AuthType = {
   secret?: string
+  token_prefix?: string
   expires_in?: string | number | undefined
   passed?: boolean,
   payload?: JwtPayload | null
@@ -90,13 +91,13 @@ export type RequestData = 'params' | 'query' | 'body' | 'headers'
 
 // Response
 export type Pinres = {
-  error: boolean,
-  msg: string,
-  path: string,
-  timestamp: number
-  data: { [index: string]: any } | any[]
-  status: number,
-  type: string
+  error?: boolean,
+  msg?: string,
+  path?: string,
+  timestamp?: number
+  data?: { [index: string]: any } | any[]
+  status?: number,
+  type?: string
 }
 export type PinresOptions = {
   data?: { [index: string]: any },

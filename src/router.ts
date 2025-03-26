@@ -1,8 +1,8 @@
 import cors from 'cors'
 import express, { NextFunction, Request, Response } from 'express'
 import path from 'path'
-import { Reply, reply } from './response'
-import { PinupConfigType, Controller, RequestMethod, AuthType, ComponentTypeMethod, Pinpack, PinupWsConfigType, RunSetupConfig } from './d'
+import { Reply, pinreply } from './response'
+import { PinupConfigType, Controller, RequestMethod, AuthType, ComponentTypeMethod, Pinpack, PinupWsConfigType, RunSetupConfig, Pinres } from './d'
 import { format, $path, colorize, ColorCode } from './utils'
 import { SignOptions, sign } from 'jsonwebtoken'
 
@@ -171,7 +171,11 @@ export class Pinup {
                     const end = (performance.now() - start)
                     if (this.#config.logger)
                         options.pin.log(`LOG +${end.toPrecision(3)}ms`, !!this.#config.logger_file)
-                    return options.pin.res(reply(`Pinup Error: ${err.message}`).error(true).status(500))
+                    return options.pin.res(pinreply({
+                        msg: `Pinup Error: ${err.message}`,
+                        error: true,
+                        status: 500
+                    }))
                 }
             }
             if (module.methods)
@@ -195,31 +199,36 @@ export class Pinup {
 
     private pin_method_extensions(req: Request, res: Response, item: ComponentTypeMethod) {
         return {
-            res: (reply: Reply) => { res.status(reply.value().status).json(reply.path(item.path).value()) },
+            res: (reply: Pinres) => {
+                return res.status(reply.status).json({...reply, path: item.path}) 
+            },
             log: (message: string, to_file: boolean = false) => {
-                const date = new Date()
-                const date_format = format(date, '$D.$M.$Y|$h:$m:$s')
-                const method = colorize(item.method.toUpperCase(), ColorCode.GREEN)
-                const parent_name = colorize(item.parent.constructor.name, ColorCode.CYAN)
-                const child_name = colorize(item.name, ColorCode.MAGENTA)
-                const path = colorize(req.route.path, ColorCode.GREEN)
-                const auth = !!req.headers.authorization ? 'auth' : ''
-                const time_string = `[${colorize(date_format, ColorCode.YELLOW)}]\t`
-                const data_formats = auth + Object.keys(item.data)
-                const log_localization = `${parent_name}.${child_name}\t`
-                const method_path_string = `{${method} - ${data_formats}, ${path}}\t`
-                const log = `${time_string} ${log_localization} ${method_path_string} ${colorize(message, ColorCode.BLUE)}`
-
+                const get_log_with_modify = (modify) => {
+                    const date = new Date()
+                    const date_format = format(date, '$D.$M.$Y|$h:$m:$s')
+                    const method = modify(item.method.toUpperCase(), ColorCode.GREEN)
+                    const parent_name = modify(item.parent.constructor.name, ColorCode.CYAN)
+                    const child_name = modify(item.name, ColorCode.MAGENTA)
+                    const path = modify(req.route.path, ColorCode.GREEN)
+                    const auth = !!req.headers.authorization ? 'auth' : ''
+                    const time_string = `[${modify(date_format, ColorCode.YELLOW)}]\t`
+                    const data_formats = auth + Object.keys(item.data)
+                    const log_localization = `${parent_name}.${child_name}\t`
+                    const method_path_string = `{${method} - ${data_formats}, ${path}}\t`
+                    return `${time_string} ${log_localization} ${method_path_string} ${modify(message, ColorCode.BLUE)}`
+                }  
+                
                 if (to_file && this.#config.logger_file) {
+                    const log = get_log_with_modify((t, x) => t)                                
                     appendFile(this.#config.logger_file,
-                        log.replaceAll(/[\u001b\u009b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/g, '') + '\n',
+                        log + '\n',
                         (err) => {
                             if (err) throw err;
                         })
-                }
-
+                    }
+                const log = get_log_with_modify(colorize)                                
                 console.log(log)
-                return log
+                return log 
             }
         }
     }

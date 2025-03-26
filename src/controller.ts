@@ -2,7 +2,7 @@ import { JwtPayload, verify } from 'jsonwebtoken'
 import { __provider__ } from './router'
 import { AuthDecoratorArgType, Controller, CustomPinupController, MethodType, Pinpack, PinupControllerTypeEnum, RequestMethod } from './d'
 import { $path, one_or_many, PINS_METHODS } from './utils'
-import { reply } from './response'
+import { pinreply } from './response'
 import path from 'path'
 
 
@@ -74,7 +74,7 @@ const data_method_wrapper = (name_dataset: 'params' | 'query' | 'body' | 'header
             let dataset = keys.map(item => {
                 return [item, req_dataset[item.startsWith('?') ? item.slice(1) : item]]
             }).filter(([key, value]) => {
-                if (key.startsWith('?')){
+                if (key.startsWith('?')) {
                     return true
                 }
                 if (!value) {
@@ -83,12 +83,13 @@ const data_method_wrapper = (name_dataset: 'params' | 'query' | 'body' | 'header
                 }
                 return true
             })
-            
+
             if (require.length !== 0) {
                 return options.pin.res(
-                    reply(`This endpoint require '${name_dataset}' with specific properties: ${require.join(', ')}`)
-                        .status(400)
-                        .error(true)
+                    pinreply({
+                        msg: `This endpoint require '${name_dataset}' with specific properties: ${require.join(', ')}`,
+                        status: 400,
+                    })
                 )
             }
             dataset = dataset.map(([key, value]) => {
@@ -125,9 +126,12 @@ export const auth = (auth_options?: AuthDecoratorArgType): any => {
             const auth_data = rec[auth_options.data_source]?.[auth_options.data_name]
             if (!auth_data && auth_options.should_end_with_error)
                 return options.pin.res(
-                    reply(`This endpoint require \'${auth_options.data_source}\' with specific properties: authorization`)
-                        .status(400)
-                        .error(true)
+                    pinreply({
+                        msg: `This endpoint require \'${auth_options.data_source}\' with specific properties: authorization`,
+                        status: 400,
+                        error: true
+                    }
+                    )
                 )
             // eslint-disable-next-line no-unused-vars
             const auth = options.auth
@@ -135,16 +139,24 @@ export const auth = (auth_options?: AuthDecoratorArgType): any => {
                 const [prefix, token] = auth_data.split(' ')
                 const payload = verify(token, auth_options.jwt_secret || auth.secret)
                 auth.payload = payload as JwtPayload
+                auth.token_prefix = prefix as string
                 auth.passed = true
             } catch (err) {
                 if (auth_options.should_end_with_error) {
-                    return options.pin.res(reply(`${err.message} [${err.name}]`)
-                        .error(true)
-                        .status(401)
-                        .data({ error_code: err.name }))
+                    return options.pin.res(pinreply({
+                        msg: `${err.message} [${err.name}]`,
+                        error: true,
+                        status: 401,
+                        data: {
+                            error_code: err.name
+                        }
+                    }
+                    ))
                 } else {
+                    auth.token_prefix = null
                     auth.payload = null
                     auth.passed = false
+
                 }
             }
             const context = original_method.bind(this)
