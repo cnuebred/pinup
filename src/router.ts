@@ -138,7 +138,7 @@ export class Pinup {
             expires_in: this.#config?.auth?.expires_in || '1h',
             passed: undefined,
             payload: null,
-            sign: (payload: string | object | Buffer, secretOrPrivateKey?: null, options?: SignOptions & { algorithm: 'none' }) => {
+            sign: (payload: string | object | Buffer, secretOrPrivateKey?: null, options?: SignOptions & { algorithm?: 'none' }) => {
                 return sign(payload, secretOrPrivateKey || auth.secret, { ...{ expiresIn: auth.expires_in || '1h' }, ...options })
             }
         }
@@ -161,7 +161,7 @@ export class Pinup {
                 }
                 const start = performance.now()
                 try {
-                    const callback = item.action({ rec: req, rep: res, options: options } as Pinpack)
+                    const callback = item.action({ req, res, options: options } as Pinpack)
                     const end = (performance.now() - start)
 
                     if (this.#config.logger)

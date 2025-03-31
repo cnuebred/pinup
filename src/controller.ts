@@ -37,9 +37,9 @@ const pins_wrapper = (method: RequestMethod, path: string | string[]) => {
 }
 const request_method_wrapper = (request_method: RequestMethod, paths: string[]): any => {
     return function (original_method: any, context: ClassMethodDecoratorContext<Controller>) {
-        function replacement_method({ rec, rep, options }: Pinpack) {
+        function replacement_method({ req, res, options }: Pinpack) {
             const context = original_method.bind(this)
-            context({ rec, rep, options })
+            context({ req, res, options })
         }
         context.addInitializer(function () {
             if (!this.methods) this.methods = []
@@ -68,8 +68,8 @@ export const pins = Object.fromEntries(PINS_METHODS.map((item: RequestMethod) =>
 
 const data_method_wrapper = (name_dataset: 'params' | 'query' | 'body' | 'headers', keys: string[]): any => {
     return (original_method: any, context: ClassMethodDecoratorContext<Controller>) => {
-        function replacement_method({ rec, rep, options }: Pinpack) {
-            const req_dataset = rec[name_dataset]
+        function replacement_method({ req, res, options }: Pinpack) {
+            const req_dataset = req[name_dataset]
             const require = []
             let dataset = keys.map(item => {
                 return [item, req_dataset[item.startsWith('?') ? item.slice(1) : item]]
@@ -97,7 +97,7 @@ const data_method_wrapper = (name_dataset: 'params' | 'query' | 'body' | 'header
             })
             options[name_dataset] = { ...options[name_dataset], ...Object.fromEntries(dataset) }
             const context = original_method.bind(this)
-            context({ rec, rep, options })
+            context({ req, res, options })
         }
         context.addInitializer(function () {
             if (!this.data) this.data = {}
@@ -119,11 +119,11 @@ export const need = {
 
 export const auth = (auth_options?: AuthDecoratorArgType): any => {
     return function (original_method: any, context: ClassMethodDecoratorContext<Controller>) {
-        function replacement_method({ rec, rep, options }: Pinpack) {
+        function replacement_method({ req, res, options }: Pinpack) {
             auth_options.data_source = auth_options.data_source || 'headers'
             auth_options.data_name = auth_options.data_name || 'authorization'
 
-            const auth_data = rec[auth_options.data_source]?.[auth_options.data_name]
+            const auth_data = req[auth_options.data_source]?.[auth_options.data_name]
             if (!auth_data && auth_options.should_end_with_error)
                 return options.pin.res(
                     pinreply({
@@ -160,7 +160,7 @@ export const auth = (auth_options?: AuthDecoratorArgType): any => {
                 }
             }
             const context = original_method.bind(this)
-            context({ rec, rep, options })
+            context({ req, res, options })
         }
         return replacement_method
     }

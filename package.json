@@ -23,7 +23,10 @@
 		"REST",
 		"Framework"
 	],
-	"repository": "https://github.com/cnuebred/pinup",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/cnuebred/pinup.git"
+	},
 	"author": "Jonathan Cube",
 	"license": "ISC",
 	"devDependencies": {

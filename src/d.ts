@@ -12,8 +12,8 @@ declare global {
   }
 }
 export type Pinpack = {
-  rec: Request
-  rep: Response,
+  req: Request
+  res: Response,
   options: MethodFunctionOptions
 }
 
@@ -23,7 +23,7 @@ export type ComponentTypeMethod = {
   path: string,
   method: RequestMethod
   parent: PinupController
-  action: ({ rec, rep, options }: Pinpack) => any,
+  action: ({ req, res, options }: Pinpack) => any,
   data: {
     // eslint-disable-next-line no-unused-vars
     [index in RequestData]?: string[]
@@ -83,7 +83,7 @@ export type MethodType = {
   name: string,
   parent: Controller
   path: string[],
-  foo: ({ rec, rep, options }: Pinpack) => void
+  foo: ({ req, res, options }: Pinpack) => void
 }
 
 export type RequestMethod = 'get' | 'post' | 'patch' | 'delete' | 'put' | 'option'

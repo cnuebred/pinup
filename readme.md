@@ -61,7 +61,7 @@ export class Doggo extends PinupController {
     }
     @pins.get()
     @need.query(['token'])
-    get_list({ rec, rep, options }: Pinpack) {
+    get_list({ req, res, options }: Pinpack) {
         options.pin.log('Here is log about how to get list')
         return options.pin.res(reply('ok'))
     }
@@ -69,7 +69,7 @@ export class Doggo extends PinupController {
     @pins.post('new')
     @need.params(['sector_id', 'name_secure'])
     @need.body(['list_item'])
-    push_to_list({ rec, rep, options }: Pinpack) {
+    push_to_list({ req, res, options }: Pinpack) {
         console.log('push_to_list')
         return options.pin.res(reply('ok'))
     }
