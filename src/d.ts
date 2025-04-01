@@ -44,7 +44,7 @@ export type AuthType = {
   expires_in?: string | number | undefined
   passed?: boolean,
   payload?: JwtPayload | null
-  sign: (payload: string | object | Buffer, secretOrPrivateKey?: null, options?: SignOptions & { algorithm: 'none' }) => string
+  sign: (payload: string | object | Buffer, secretOrPrivateKey?: null, options?: SignOptions) => string
 
 }
 export type MethodFunctionOptions = {
