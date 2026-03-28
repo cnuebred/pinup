@@ -249,7 +249,7 @@ export class Pinup {
             if (config.print_setup_config) {
                 const methods = []
                 const static_dirs = []
-                const parent_name = (parent: Controller) => {
+                const parent_name = (parent: PinupController) => {
                     const names = []
                     while (parent?.constructor.name) {
                         names.push(parent.constructor.name)

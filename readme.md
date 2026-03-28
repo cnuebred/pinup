@@ -1,27 +1,31 @@
 ![ok](https://imgur.com/suyNnZg.png)
 
-
 Pinup - Creating REST APIs Made Easy
 ====================================
 [![npm version](https://img.shields.io/npm/v/pinup.svg?logo=npm)](https://www.npmjs.com/package/pinup)
 [![npm downloads](https://img.shields.io/npm/dw/pinup)](https://www.npmjs.com/package/pinup)
 
-
-**Pinup** is a library that enables you to create simple and efficient REST APIs in TypeScript using the Express framework. The library provides a set of tools and decorators that allow you to define API endpoints in a modular and readable manner.
+**Pinup** is a library that enables you to create simple and efficient REST APIs in TypeScript using the Express framework. The library provides a set of tools that allow you to define API endpoints in a modular, readable, and object-oriented manner.
 
 Installation
 ------------
 
 To get started with the Pinup library, you can install it using the npm package manager:
 
-    npm install pinup
-
+```bash
+npm install pinup
+```
 
 Quick Start
 -----------
 
-Here's a simple example of using the Pinup library to create two API endpoints:
+Here's a simple example of using the Pinup library to create API endpoints. Instead of decorators, Pinup now uses configuration objects returned directly from controller methods.
+
 ```typescript
+import express from 'express'
+import path from 'path'
+import { Pinup, PinupController, pins, need, reply, Pinpack } from 'pinup'
+
 const app = express()
 const pinup = new Pinup(app, {
     port: 3300,
@@ -37,18 +41,32 @@ export class Catto extends PinupController {
         this.path = 'catto'
         this.debug_show_statistic()
     }
-    @pins.get()
-    @need.query(['token'])
-    @auth()
-    get_list({ req, res, options }) {
-        return options.pin.res(reply('ok'))
+    
+    get_list() {
+        return {
+            pins: pins.get(),
+            need: [need.query(['token'])],
+            callback: async ({ req, res, options }: Pinpack) => {
+                return options.pin.res(reply('ok'))
+            }
+        }
     }
 
-    @pins.post('new')
-    @need.params(['sector_id', 'name_secure'])
-    @need.body(['list_item'])
     push_to_list() {
-        console.log('push_to_list')
+        return {
+            pins: pins.post('new/:sector_id/:name_secure'),
+            need: [
+                need.params(['sector_id', 'name_secure']),
+                need.body(['list_item'])
+            ],
+            auth: {
+                should_end_with_error: true
+            },
+            callback: async ({ req, res, options }: Pinpack) => {
+                console.log('push_to_list')
+                return options.pin.res(reply('ok'))
+            }
+        }
     }
 }
 
@@ -59,19 +77,27 @@ export class Doggo extends PinupController {
         this.files(path.resolve('./'), 'assets')
         this.debug_show_statistic()
     }
-    @pins.get()
-    @need.query(['token'])
-    get_list({ req, res, options }: Pinpack) {
-        options.pin.log('Here is log about how to get list')
-        return options.pin.res(reply('ok'))
+
+    get_list() {
+        return {
+            pins: pins.get(),
+            need: [need.query(['token'])],
+            callback: async ({ req, res, options }: Pinpack) => {
+                options.pin.log('Here is log about how to get list')
+                return options.pin.res(reply('ok'))
+            }
+        }
     }
 
-    @pins.post('new')
-    @need.params(['sector_id', 'name_secure'])
-    @need.body(['list_item'])
-    push_to_list({ req, res, options }: Pinpack) {
-        console.log('push_to_list')
-        return options.pin.res(reply('ok'))
+    push_to_list() {
+        return {
+            pins: pins.post('new'),
+            need: [need.params(['sector_id', 'name_secure'])],
+            callback: async ({ req, res, options }: Pinpack) => {
+                console.log('push_to_list')
+                return options.pin.res(reply('ok'))
+            }
+        }
     }
 }
 
@@ -80,6 +106,7 @@ pinup.run({
     print_setup_config: true
 })
 ```
+
 ```bash
 Pinup build in 3ms
 Server is running on 3300
@@ -102,44 +129,34 @@ HTTP Endpoints
 └─────────┴────────────┴──────────────┴─────────────────┘
 ```
 
-
 Features
 --------
 
-### Decorators
+### Controllers & Endpoints
 
-*   `@pins.method('path')`: Decorator for HTTP methods (e.g., `@pins.get()`, `@pins.post('new')`) attaches handling functions to endpoints.
-*   `@need.param(['param1', 'param2'])`: Requires specific parameters in requests for further processing (eg. `@need.query('page_number')`, `@need.body('data_scheme')`).
-*   `@auth()`: Requires JWT authentication for accessing the endpoint.
+In Pinup, controllers extend the `PinupController` class. To create an endpoint, define a method that returns a configuration object containing the following properties:
+
+* **`pins`**: Defines the HTTP method and path (e.g., `pins.get()`, `pins.post('new')`).
+* **`need`**: An array specifying required parameters in requests (e.g., `need.params(['id'])`, `need.query(['page'])`, `need.body(['data'])`). It automatically validates the incoming request.
+* **`auth`**: An optional configuration object (e.g., `{ should_end_with_error: true }`) requiring JWT authentication for accessing the endpoint.
+* **`callback`**: An async function `({ req, res, options }: Pinpack) => {}` containing the business logic. 
 
 ### Class `Pinup`
 
 The `Pinup` class is used for configuring and running the Express application.
 
-*   `new Pinup(app: express.Express, config?: PinupConfigType)`: Creates a Pinup instance.
-*   `run(print_setup_config?: boolean)`: Launches the Express server.
+* `new Pinup(app: express.Express, config?: PinupConfigType)`: Creates a Pinup instance. Accepts options like port, auth secret, and logging preferences.
+* `pin(ControllerClass)`: Registers a root controller to the application.
+* `run(config: RunSetupConfig)`: Launches the Express server and optionally prints the setup config table to the console.
 
-### Function `reply`
+### Function `reply` (`pinreply`)
 
-The `reply` Monad is responsible for creating and sending responses from endpoints.
+The `reply` function creates a flexible response object with customizable properties.
 
-*   `reply(content: string | Pinres)`: Creates a response instance.
-*   Chainable Methods:
-    *   `status(status: number)`: Sets the response status.
-    *   `error(error: boolean)`: Sets the error flag.
-    *   `timestamp(timestamp: number)`: Sets the timestamp.
-    *   `path(path: string)`: Sets the response path.
-    *   `data(data: { [index: string]: any })`: Adds data to the response.
-    *   `map(callback: (item: Pinres) => Pinres)`: Maps the response using a provided function.
-
-Usage Example
--------------
-
+* `reply(content: string | Pinres)`: Accepts either a string (used as a default message) or a predefined `Pinres` object (allowing you to set custom `status`, `error`, `data`, etc.).
+* It returns a response object with default values that can be safely passed to `options.pin.res()`.
 
 Contribution
 ------------
 
 If you want to contribute to the Pinup project, go ahead! I have an open repository on GitHub where you can report issues and submit pull requests: [Pinup Repository on GitHub](https://github.com/cnuebred/pinup)
-
-
-* * *
