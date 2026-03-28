@@ -33,31 +33,9 @@ export function pin(
 }
 
 const pins_wrapper = (method: RequestMethod, path: string | string[]) => {
-    return request_method_wrapper(method, one_or_many(path).many(''))
-}
-const request_method_wrapper = (request_method: RequestMethod, paths: string[]): any => {
-    return function (original_method: any, context: ClassMethodDecoratorContext<Controller>) {
-        function replacement_method({ req, res, options }: Pinpack) {
-            const context = original_method.bind(this)
-            context({ req, res, options })
-        }
-        context.addInitializer(function () {
-            if (!this.methods) this.methods = []
-
-            paths.forEach(path => {
-                this.methods.push({
-                    method: request_method,
-                    name: context.name.toString(),
-                    path: one_or_many(path).many(''),
-                    parent: this,
-                    foo: replacement_method,
-                    data: { ...this.data }
-                })
-            })
-            this.data = {}
-        })
-
-        return replacement_method
+    return {
+        method,
+        path: one_or_many(path).many('')
     }
 }
 
@@ -66,9 +44,12 @@ export const pins = Object.fromEntries(PINS_METHODS.map((item: RequestMethod) =>
     // eslint-disable-next-line no-unused-vars
 })) as { [K in RequestMethod]: (...path: string[]) => any }
 
-const data_method_wrapper = (name_dataset: 'params' | 'query' | 'body' | 'headers', keys: string[]): any => {
-    return (original_method: any, context: ClassMethodDecoratorContext<Controller>) => {
-        function replacement_method({ req, res, options }: Pinpack) {
+const data_method_wrapper = (
+    callback: ({req, res, options}: Pinpack) => {},
+    name_dataset: 'params' | 'query' | 'body' | 'headers', 
+    keys: string[], 
+) => {
+        return async ({ req, res, options }: Pinpack) => {
             const req_dataset = req[name_dataset]
             const require = []
             let dataset = keys.map(item => {
@@ -96,30 +77,33 @@ const data_method_wrapper = (name_dataset: 'params' | 'query' | 'body' | 'header
                 return [key.startsWith('?') ? key.slice(1) : key, value]
             })
             options[name_dataset] = { ...options[name_dataset], ...Object.fromEntries(dataset) }
-            const context = original_method.bind(this)
-            context({ req, res, options })
-        }
-        context.addInitializer(function () {
-            if (!this.data) this.data = {}
-            this.data[name_dataset] = keys
-        })
-
-        return replacement_method
+            callback({ req, res, options })
     }
 }
 
 export const need = {
-    params: (keys: string[]): any => data_method_wrapper('params', keys),
-    query: (keys: string[]): any => data_method_wrapper('query', keys),
-    body: (keys: string[]): any => data_method_wrapper('body', keys),
-    headers: (keys: string[]): any => data_method_wrapper('headers', keys)
+    params: (keys: string[]) => ({
+        method: 'params',
+        keys
+    }),
+    query: (keys: string[]) => ({
+        method: 'query',
+        keys
+    }),
+    body: (keys: string[]) => ({
+        method: 'body',
+        keys
+    }),
+    headers: (keys: string[]) => ({
+        method: 'headers',
+        keys
+    }),
 }
 
 
 
-export const auth = (auth_options?: AuthDecoratorArgType): any => {
-    return function (original_method: any, context: ClassMethodDecoratorContext<Controller>) {
-        function replacement_method({ req, res, options }: Pinpack) {
+export const auth = (callback: ({ req, res, options }: Pinpack) => {}, auth_options: AuthDecoratorArgType) => {
+        return async ({ req, res, options }: Pinpack) => {
             auth_options.data_source = auth_options.data_source || 'headers'
             auth_options.data_name = auth_options.data_name || 'authorization'
 
@@ -127,7 +111,9 @@ export const auth = (auth_options?: AuthDecoratorArgType): any => {
             if (!auth_data && auth_options.should_end_with_error)
                 return options.pin.res(
                     pinreply({
-                        msg: `This endpoint require \'${auth_options.data_source}\' with specific properties: authorization`,
+                        msg: `This endpoint require \'${
+                            auth_options.data_source
+                        }\' with specific properties: authorization`,
                         status: 400,
                         error: true
                     }
@@ -159,22 +145,59 @@ export const auth = (auth_options?: AuthDecoratorArgType): any => {
 
                 }
             }
-            const context = original_method.bind(this)
-            context({ req, res, options })
-        }
-        return replacement_method
+            await callback({ req, res, options })
     }
 }
 
+
+export type MethodObject = {
+    pins: { method: RequestMethod, path: string[] },
+    need?: {
+            method: "params" | "query" | "body" | "headers";
+            keys: string[];
+        }[],
+    auth?: AuthDecoratorArgType
+    callback: ({ req, res, options }: Pinpack) => {}
+}
 export abstract class PinupController {
     #parent: PinupController | null = null
     #children: PinupController[] = []
     #path: string = '/'
     static_dirs: string[][] = []
     #type: PinupControllerTypeEnum = PinupControllerTypeEnum.DEFAULT
-    constructor() { }
-    methods: MethodType[]
+    methods: MethodType[] = []
+    constructor() {
+        const methodsNames = Object.getOwnPropertyNames(Object.getPrototypeOf(this))
 
+        for (let methodName of methodsNames) {
+            if (methodName == 'constructor' || methodName == '$init')
+                continue
+            const methodParams: MethodObject = this[methodName]()
+            let callback = methodParams.callback
+            if(!methodParams.pins)
+                throw `Method: ${methodName}, doesn't have request's method specified`
+
+            if(methodParams.auth){
+                callback = auth(callback, methodParams.auth)
+            }
+
+            for(let need of methodParams.need){
+                callback = data_method_wrapper(
+                    callback, need.method, need.keys
+                )
+            }
+            console.log(methodParams)
+            this.methods.push({
+                method: methodParams.pins.method,
+                data: methodParams.need,
+                name: methodName,
+                parent: this,
+                path: methodParams.pins.path,
+                foo: callback
+            })
+        }
+
+    }
     get parent(): PinupController { return this.#parent }
 
     get type(): PinupControllerTypeEnum { return this.#type }

@@ -25,9 +25,9 @@ export type ComponentTypeMethod = {
   parent: PinupController
   action: ({ req, res, options }: Pinpack) => any,
   data: {
-    // eslint-disable-next-line no-unused-vars
-    [index in RequestData]?: string[]
-  }
+    method: string;
+    keys: string[];
+  }[]
 }
 
 export type ComponentType = {
@@ -52,7 +52,7 @@ export type MethodFunctionOptions = {
   self: ComponentTypeMethod
   pin: {
     res: (reply: Reply) => void
-    log: (message: string, to_file?:boolean) => void
+    log: (message: string, to_file?: boolean) => void
   }
   auth: AuthType
   params: book<string>
@@ -78,10 +78,11 @@ export type PinupType = {
 export type MethodType = {
   method: string,
   data?: {
-    [K in RequestData]?: string[]
-  }
+    method: string;
+    keys: string[];
+  }[]
   name: string,
-  parent: Controller
+  parent: PinupController
   path: string[],
   foo: ({ req, res, options }: Pinpack) => void
 }
@@ -140,7 +141,7 @@ export type PinupWsConfigType = {
 }
 
 export type RunSetupConfig = {
-  print_setup_config:boolean
+  print_setup_config: boolean
 }
 
 export enum PinupControllerTypeEnum {
@@ -154,8 +155,8 @@ export enum PinupControllerTypeEnum {
 export type CustomPinupController = new (...args: any[]) => PinupController
 
 export type AuthDecoratorArgType = {
-  should_end_with_error?: boolean, 
-  jwt_secret?: string, 
-  data_source?: 'params' | 'query' | 'body' | 'headers', 
+  should_end_with_error?: boolean,
+  jwt_secret?: string,
+  data_source?: 'params' | 'query' | 'body' | 'headers',
   data_name?: string
 }

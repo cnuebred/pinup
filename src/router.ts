@@ -94,6 +94,8 @@ export class PinupWss {
 
 }
 
+
+
 export class Pinup {
     #controllers: PinupController[] = []
     #config: PinupConfigType = {}
@@ -144,10 +146,7 @@ export class Pinup {
         }
         return auth
     }
-
-    async #setup() {
-        for (const module of this.#controllers) {
-            const endpoint_callback = (req: Request, res: Response, next: NextFunction, item: ComponentTypeMethod) => {
+    endpoint_callback = (req: Request, res: Response, next: NextFunction, item: ComponentTypeMethod) => {
                 const pin = this.pin_method_extensions(req, res, item)
                 const options = {
                     auth: this.authorization_jwt(),
@@ -178,6 +177,8 @@ export class Pinup {
                     }))
                 }
             }
+    async #setup() {
+        for (const module of this.#controllers) {
             if (module.methods)
                 for (const method of module.methods) {
                     const parsed_method: ComponentTypeMethod = {
@@ -186,12 +187,14 @@ export class Pinup {
                         endpoint: $path(...method.path).normalize(),
                         path: $path(module.full_path, ...method.path).normalize(),
                         parent: module,
-                        action: method.foo.bind(module),
+                        action: method.foo,
                         data: method.data
                     }
                     this.app[parsed_method.method](
                         parsed_method.path,
-                        (req: Request, res: Response, next: NextFunction) => endpoint_callback(req, res, next, parsed_method))
+                        (req: Request, res: Response, next: NextFunction) => {
+                            return this.endpoint_callback(req, res, next, parsed_method)
+                        })
                 }
         }
 
