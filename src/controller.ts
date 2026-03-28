@@ -180,13 +180,13 @@ export abstract class PinupController {
             if(methodParams.auth){
                 callback = auth(callback, methodParams.auth)
             }
-
-            for(let need of methodParams.need){
-                callback = data_method_wrapper(
-                    callback, need.method, need.keys
-                )
+            if(methodParams.need){
+                for(let need of methodParams.need){
+                    callback = data_method_wrapper(
+                        callback, need.method, need.keys
+                    )
+                }
             }
-            console.log(methodParams)
             this.methods.push({
                 method: methodParams.pins.method,
                 data: methodParams.need,
